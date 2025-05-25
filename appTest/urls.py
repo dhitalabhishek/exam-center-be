@@ -1,8 +1,9 @@
-from django.http import JsonResponse
+from django.urls import path
 
-from .tasks import fake_task
+from .views import trigger_fake_task
 
+app_name = "appTest"
 
-def trigger_fake_task(request):
-    task = fake_task.delay(3)  # runs fake_task asynchronously for 3 seconds
-    return JsonResponse({"task_id": task.id, "status": "task started"})
+urlpatterns = [
+    path("", trigger_fake_task, name="fakeTask"),
+]

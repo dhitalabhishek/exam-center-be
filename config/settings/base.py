@@ -356,6 +356,5 @@ SPECTACULAR_SETTINGS = {
 # ------------------------------------------------------------------------------
 
 INSTALLED_APPS += [
-    "django_celery_beat",
     "appTest",
 ]
