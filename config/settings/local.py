@@ -99,7 +99,3 @@ AWS_S3_ADDRESSING_STYLE = "path"
 
 
 
-# Prometheus middleware
-INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]
-MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
-MIDDLEWARE = [*MIDDLEWARE, "django_prometheus.middleware.PrometheusAfterMiddleware"]

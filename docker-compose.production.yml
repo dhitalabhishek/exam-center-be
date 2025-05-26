@@ -1,19 +1,19 @@
+version: '3.8'
+
 volumes:
   production_postgres_data: {}
   production_postgres_data_backups: {}
-  production_traefik: {}
-  production_django_media: {}
-  
   production_redis_data: {}
-  
-
+  production_django_media: {}
+  production_minio_data: {}
+  production_grafana_data: {}
+  production_traefik: {}
 
 services:
   django: &django
     build:
       context: .
       dockerfile: ./compose/production/django/Dockerfile
-
     image: backend_production_django
     volumes:
       - production_django_media:/app/backend/media
@@ -24,6 +24,11 @@ services:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
     command: /start
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.django.rule=Host(`example.com`)"
+      - "traefik.http.routers.django.entrypoints=web"
+      - "traefik.http.services.django.loadbalancer.server.port=8000"
 
   postgres:
     build:
@@ -36,41 +41,32 @@ services:
     env_file:
       - ./.envs/.production/.postgres
 
-  traefik:
-    build:
-      context: .
-      dockerfile: ./compose/production/traefik/Dockerfile
-    image: backend_production_traefik
-    depends_on:
-      - django
-    volumes:
-      - production_traefik:/etc/traefik/acme
-    ports:
-      - '0.0.0.0:80:80'
-      - '0.0.0.0:443:443'
-      - '0.0.0.0:5555:5555'
-
   redis:
-    image: docker.io/redis:6
-    
+    image: redis:6
     volumes:
       - production_redis_data:/data
-    
 
   celeryworker:
     <<: *django
     image: backend_production_celeryworker
     command: /start-celeryworker
+    labels: []
 
   celerybeat:
     <<: *django
     image: backend_production_celerybeat
     command: /start-celerybeat
+    labels: []
 
   flower:
     <<: *django
     image: backend_production_flower
     command: /start-flower
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flower.rule=Host(`flower.example.com`)"
+      - "traefik.http.routers.flower.entrypoints=web"
+      - "traefik.http.services.flower.loadbalancer.server.port=5555"
 
   nginx:
     build:
@@ -81,3 +77,65 @@ services:
       - django
     volumes:
       - production_django_media:/usr/share/nginx/media:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx.rule=Host(`static.example.com`)"
+      - "traefik.http.routers.nginx.entrypoints=web"
+      - "traefik.http.services.nginx.loadbalancer.server.port=80"
+
+  traefik:
+    image: traefik:v2.10
+    container_name: backend_production_traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - production_traefik:/etc/traefik/acme
+
+  minio:
+    image: minio/minio:latest
+    container_name: backend_production_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - production_minio_data:/data
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    command: server /data --console-address ":9001"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: backend_production_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: backend_production_grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - production_grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: backend_production_cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8080:8080"

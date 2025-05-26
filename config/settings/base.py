@@ -358,3 +358,8 @@ SPECTACULAR_SETTINGS = {
 INSTALLED_APPS += [
     "appTest",
 ]
+
+
+INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]
+MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
+MIDDLEWARE = [*MIDDLEWARE, "django_prometheus.middleware.PrometheusAfterMiddleware"]
