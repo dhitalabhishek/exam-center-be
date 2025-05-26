@@ -16,3 +16,10 @@ CELERY_FLOWER_PASSWORD=debug
 # enable debugging
 # ------------------------------------------------------------------------------
 DEBUG=True
+
+
+# minio setup
+MINIO_ROOT_USER=admin
+MINIO_ROOT_PASSWORD=admin123
+AWS_STORAGE_BUCKET_NAME=exambucket
+AWS_S3_ENDPOINT_URL=http://minio:9000

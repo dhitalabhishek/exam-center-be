@@ -6,6 +6,7 @@ from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
 from django.views.generic import TemplateView
+from django_prometheus import exports as prometheus_exports
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
@@ -20,6 +21,7 @@ urlpatterns = [
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
     # User management
+    path("", include("django_prometheus.urls")),
     path("users/", include("backend.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
     path("appTest/", include("appTest.urls")),

@@ -28,3 +28,6 @@ django-cors-headers==4.7.0  # https://github.com/adamchainz/django-cors-headers
 drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 celery
 redis
+django-storages[boto3]
+django-prometheus
+
