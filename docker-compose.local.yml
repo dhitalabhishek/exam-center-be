@@ -9,6 +9,7 @@ volumes:
   static_volume:
   media_volume:
 
+
 services:
   django: &django
     build:
@@ -123,9 +124,18 @@ services:
     volumes:
       - backend_local_grafana_data:/var/lib/grafana
 
+  # system level monitoring service
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: backed_local_node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+
+  # Docker monitoring service
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
+    container_name: backend_local_cadvisor
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:rw
