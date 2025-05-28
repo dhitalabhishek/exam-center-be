@@ -360,7 +360,6 @@ SPECTACULAR_SETTINGS = {
 # ------------------------------------------------------------------------------
 
 INSTALLED_APPS += [
-    "appTest",
     "appAuthentication",
 ]
 
