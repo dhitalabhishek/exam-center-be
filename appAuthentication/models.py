@@ -58,4 +58,4 @@ class Candidate(models.Model):
     program = models.CharField(max_length=100)
     generated_password = models.CharField(max_length=128)
     def __str__(self):
-        return f"{self.firstname} {self.lastname} ({self.user.symbol_number})"
+        return f"{self.first_name} {self.last_name} ({self.symbol_number})"

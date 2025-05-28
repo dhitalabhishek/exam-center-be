@@ -80,13 +80,14 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
+    "rest_framework_simplejwt",
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
 ]
 
 LOCAL_APPS = [
-    "backend.users",
+    # "backend.users",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -95,7 +96,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # MIGRATIONS
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#migration-modules
-MIGRATION_MODULES = {"sites": "backend.contrib.sites.migrations"}
+# MIGRATION_MODULES = {"sites": "backend.contrib.sites.migrations"}
 
 # AUTHENTICATION
 # ------------------------------------------------------------------------------
@@ -105,9 +106,9 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
-AUTH_USER_MODEL = "users.User"
+AUTH_USER_MODEL = "appAuthentication.User"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url
-LOGIN_REDIRECT_URL = "users:redirect"
+# LOGIN_REDIRECT_URL = "users:redirect"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-url
 LOGIN_URL = "account_login"
 
@@ -191,7 +192,7 @@ TEMPLATES = [
                 "django.template.context_processors.static",
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
-                "backend.users.context_processors.allauth_settings",
+                # "backend.users.context_processors.allauth_settings",
             ],
         },
     },
@@ -315,14 +316,16 @@ ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+
+
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_ADAPTER = "backend.users.adapters.AccountAdapter"
+# ACCOUNT_ADAPTER = "backend.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
-ACCOUNT_FORMS = {"signup": "backend.users.forms.UserSignupForm"}
+# ACCOUNT_FORMS = {"signup": "backend.users.forms.UserSignupForm"}
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_ADAPTER = "backend.users.adapters.SocialAccountAdapter"
+# SOCIALACCOUNT_ADAPTER = "backend.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_FORMS = {"signup": "backend.users.forms.UserSocialSignupForm"}
+# SOCIALACCOUNT_FORMS = {"signup": "backend.users.forms.UserSocialSignupForm"}
 # django-compressor
 # ------------------------------------------------------------------------------
 # https://django-compressor.readthedocs.io/en/latest/quickstart/#installation
@@ -333,6 +336,7 @@ STATICFILES_FINDERS += ["compressor.finders.CompressorFinder"]
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
@@ -357,6 +361,7 @@ SPECTACULAR_SETTINGS = {
 
 INSTALLED_APPS += [
     "appTest",
+    "appAuthentication",
 ]
 
 

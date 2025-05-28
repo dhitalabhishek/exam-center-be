@@ -22,7 +22,7 @@ services:
       - redis
     volumes:
       - .:/app:z
-      - static_volume:/app/backend/static
+      - static_volume:/app/backend/staticfiles
       - media_volume:/app/backend/media
     env_file:
       - ./.envs/.local/.django
