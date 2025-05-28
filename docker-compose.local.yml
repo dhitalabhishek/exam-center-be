@@ -22,7 +22,7 @@ services:
       - redis
     volumes:
       - .:/app:z
-      - static_volume:/app/backend/staticfiles
+      - static_volume:/app/staticfiles
       - media_volume:/app/backend/media
     env_file:
       - ./.envs/.local/.django
@@ -121,6 +121,10 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_SERVER_ROOT_URL=http://localhost/monitor/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SERVER_DOMAIN=localhost
+      - GF_SERVER_HTTP_PORT=3000
     volumes:
       - backend_local_grafana_data:/var/lib/grafana
 
