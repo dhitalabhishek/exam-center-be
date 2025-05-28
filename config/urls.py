@@ -14,8 +14,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     # Core pages
-    path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
-    path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
+    # path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
+    # path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
 
     # Admin
     path(settings.ADMIN_URL, admin.site.urls),
@@ -30,9 +30,7 @@ urlpatterns = [
 
     # API
     path("api/", include("config.api_router")),
-    path("api/auth-token/", obtain_auth_token, name="obtain_auth_token"),  # optional
-    path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"),
          name="api-docs"),
