@@ -31,3 +31,4 @@ celery
 redis
 django-storages[boto3]
 django-prometheus
+django-jazzmin
