@@ -1,4 +1,7 @@
+# config/api_router.py
+
 from django.conf import settings
+from django.urls import include
 from django.urls import path
 from drf_spectacular.utils import OpenApiResponse
 from drf_spectacular.utils import extend_schema
@@ -8,16 +11,10 @@ from rest_framework.routers import SimpleRouter
 from appAuthentication.serializers import CandidateLoginSerializer
 from appAuthentication.views import candidate_login_view
 
-# from backend.users.api.views import UserViewSet
-# router.register("users", UserViewSet)
-
-# Use DefaultRouter in DEBUG (for browsable API), SimpleRouter otherwise
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
-# e.g. router.register("users", UserViewSet)
-
-app_name = "api"
 
 custom_urls = [
+    # Candidate login
     path(
         "login/student/",
         extend_schema(
@@ -31,7 +28,15 @@ custom_urls = [
         )(candidate_login_view),
         name="candidate-login",
     ),
+    # Institutions “upcoming events” and “student event” endpoints
+    # path(
+    #     "institutions/",
+    #     include(("appInstitutions.urls", "institutions"), namespace="institutions"),  # noqa: E501, ERA001
+    # ),
+
+    # Exam specific endpoints (“events/upcoming” and “events/student/<id>”)
+    path("events/", include(("appExam.urls", "exam"), namespace="exam")),
 ]
 
-
+app_name = "api"
 urlpatterns = custom_urls + router.urls

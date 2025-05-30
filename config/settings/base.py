@@ -77,7 +77,6 @@ THIRD_PARTY_APPS = [
     "allauth",
     "allauth.account",
     "allauth.mfa",
-    "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
     "rest_framework_simplejwt",
@@ -361,8 +360,9 @@ SPECTACULAR_SETTINGS = {
 
 INSTALLED_APPS += [
     "appAuthentication",
+    "appInstitutions",
+    "appExam",
 ]
-
 
 INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]

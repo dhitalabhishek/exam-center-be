@@ -18,11 +18,14 @@ class AdminRegistrationSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data["password1"] != data["confirm_password1"]:
-            raise serializers.ValidationError("Password 1 and Confirm Password 1 do not match.")
+            msg = "Password 1 and Confirm Password 1 do not match."
+            raise serializers.ValidationError(msg)
         if data["password2"] != data["confirm_password2"]:
-            raise serializers.ValidationError("Password 2 and Confirm Password 2 do not match.")
+            msg = "Password 2 and Confirm Password 2 do not match."
+            raise serializers.ValidationError(msg)
         if data["password1"] == data["password2"]:
-            raise serializers.ValidationError("Password 1 and Password 2 must be different.")
+            msg = "Password 1 and Password 2 must be different."
+            raise serializers.ValidationError(msg)
         return data
 
     def create(self, validated_data):
@@ -50,13 +53,16 @@ class AdminLoginSerializer(serializers.Serializer):
 
         user = authenticate(username=email, password=password1)
         if not user:
-            raise serializers.ValidationError("Invalid email or password1.")
+            msg = "Invalid email or password1."
+            raise serializers.ValidationError(msg)
 
         if not user.is_admin:
-            raise serializers.ValidationError("This user is not an admin.")
+            msg = "This user is not an admin."
+            raise serializers.ValidationError(msg)
 
         if user.admin_password2 != password2:
-            raise serializers.ValidationError("Password 2 is incorrect.")
+            msg = "Password 2 is incorrect."
+            raise serializers.ValidationError(msg)
 
         data["user"] = user
         return data
@@ -66,26 +72,63 @@ class CandidateRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Candidate
         fields = [
-            "admit_card_id", "profile_id", "symbol_number", "exam_processing_id", "gender",
+            "admit_card_id", "profile_id", "symbol_number", "exam_processing_id", "gender",  # noqa: E501
             "citizenship_no", "first_name", "middle_name", "last_name", "dob_nep",
             "email", "phone", "level_id", "level", "program_id", "program",
         ]
 
     def create(self, validated_data):
-        random_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        random_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))  # noqa: E501, S311
         user = User.objects.create_user(
             email=validated_data["email"],
             password=random_password,
             is_candidate=True,
         )
-        candidate = Candidate.objects.create(
+        return Candidate.objects.create(
             user=user,
             generated_password=random_password,
             **validated_data,
         )
-        return candidate
-
 
 class CandidateLoginSerializer(serializers.Serializer):
     symbol_number = serializers.CharField()
     password = serializers.CharField()
+
+
+
+class CandidateSerializer(serializers.ModelSerializer):
+    level = serializers.CharField(source="level", read_only=True)
+    program = serializers.CharField(source="program.name", read_only=True)
+    institute = serializers.CharField(
+        source="program.institute.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Candidate
+        fields = [
+            "id",
+            "admit_card_id",
+            "profile_id",
+            "symbol_number",
+            "exam_processing_id",
+            "gender",
+            "citizenship_no",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "dob_nep",
+            "email",
+            "phone",
+            "level",
+            "program",
+            "institute",
+            "profile_image",
+            "address",
+            "verification_status",
+            "exam_status",
+        ]
+        extra_kwargs = {
+            "profile_image": {"required": False},
+            "address": {"required": False},
+        }
