@@ -39,7 +39,7 @@ class Exam(models.Model):
             msg = "Subject does not belong to the selected program"
             raise ValidationError(msg)
 
-
+# todo: notice field, as rich text
 class ExamSession(models.Model):
     STATUS_CHOICES = [
         ("scheduled", "Scheduled"),
@@ -95,7 +95,7 @@ class HallAssignment(models.Model):
             ]
         except ValueError:
             msg = "Roll number range must be in the format 'XXX - YYY'"
-            # raise ValidationError(msg)  # noqa: B904, ERA001
+            # raise ValidationError(msg)  # noqa: ERA001
             start_str = msg
             end_str = msg
 
@@ -115,6 +115,7 @@ class HallAssignment(models.Model):
         _ = self.get_numeric_roll_range()
 
 
+# todo : remove question set directly assign question to exam session
 class QuestionSet(models.Model):
     name = models.CharField(max_length=255)
     program = models.ForeignKey(

@@ -16,6 +16,7 @@ class Institute(models.Model):
         return self.name
 
 
+# todo: if created from programm institute defaults to Programme Institute
 class Subject(models.Model):
     name = models.CharField(max_length=500)
     code = models.CharField(max_length=50, unique=True)
@@ -31,6 +32,7 @@ class Subject(models.Model):
         return self.name
 
 
+# todo: remove duration
 class Program(models.Model):
     name = models.CharField(max_length=255)
     institute = models.ForeignKey(
