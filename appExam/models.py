@@ -1,5 +1,6 @@
 import re
 
+from ckeditor.fields import RichTextField
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -39,6 +40,7 @@ class Exam(models.Model):
             msg = "Subject does not belong to the selected program"
             raise ValidationError(msg)
 
+
 # todo: notice field, as rich text
 class ExamSession(models.Model):
     STATUS_CHOICES = [
@@ -51,6 +53,10 @@ class ExamSession(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True)
+    notice = RichTextField(
+        blank=True,
+        help_text="Notice for the exam session, can include instructions or important information.",  # noqa: E501
+    )
     status = models.CharField(
         max_length=30,
         choices=STATUS_CHOICES,
@@ -65,7 +71,7 @@ class ExamSession(models.Model):
         return f"{self.exam} at {self.start_time.strftime('%Y-%m-%d %H:%M')} in {halls}"
 
 
-class HallAssignment(models.Model):
+class HallAndStudentAssignment(models.Model):
     session = models.ForeignKey(
         ExamSession,
         on_delete=models.CASCADE,
@@ -115,52 +121,9 @@ class HallAssignment(models.Model):
         _ = self.get_numeric_roll_range()
 
 
-# todo : remove question set directly assign question to exam session
-class QuestionSet(models.Model):
-    name = models.CharField(max_length=255)
-    program = models.ForeignKey(
-        Program,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-    )
-    subject = models.ForeignKey(
-        Subject,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-    )
-    hall_assignment = models.ForeignKey(
-        HallAssignment,
-        on_delete=models.CASCADE,
-        related_name="question_sets",
-        null=True,
-        blank=True,
-    )
-
-    def __str__(self):
-        return self.name
-
-    def clean(self):
-        if not self.program and not self.subject:
-            msg = "Question set must be linked to a Program or Subject"
-            raise ValidationError(msg)
-        if (
-            self.program
-            and self.subject
-            and self.subject not in self.program.subjects.all()
-        ):
-            msg = "Subject does not belong to the specified Program"
-            raise ValidationError(msg)
-
-
 class Question(models.Model):
     text = models.TextField()
-    question_set = models.ForeignKey(
-        QuestionSet,
-        on_delete=models.CASCADE,
-        related_name="questions",
-    )
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.text[:50]
@@ -183,10 +146,16 @@ class StudentExamEnrollment(models.Model):
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE)
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
     hall_assignment = models.ForeignKey(
-        HallAssignment,
+        HallAndStudentAssignment,
         on_delete=models.CASCADE,
         null=True,
     )
+
+    question_order = models.JSONField(
+        default=list,
+        help_text="Stores the order of question IDs assigned to the student.",
+    )
+
     Time_Remaining = models.IntegerField(default=0)
 
     def __str__(self):

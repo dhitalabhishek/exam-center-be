@@ -68,6 +68,7 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # "django.contrib.humanize", # Handy template tags
+    "ckeditor",
     "jazzmin",
     "django.contrib.admin",
     "django.forms",
@@ -262,6 +263,13 @@ LOGGING = {
         },
     },
     "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "appAuthentication.tasks": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": True,
+        },
+    },
 }
 
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
@@ -371,3 +379,12 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
 MIDDLEWARE = [*MIDDLEWARE, "django_prometheus.middleware.PrometheusAfterMiddleware"]
+
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "simplex",
+}
+
+JAZZMIN_SETTINGS = {
+    "hide_apps": ["account", "authtoken", "mfa", "sites"],
+}

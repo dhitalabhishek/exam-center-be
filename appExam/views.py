@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from .models import ExamSession
 from .models import StudentExamEnrollment
 from .serializers import ExamSessionSerializer
-from .serializers import HallAssignmentSerializer
+from .serializers import HallAndStudentAssignmentSerializer
 from .serializers import StudentExamEnrollmentSerializer
 
 
@@ -42,7 +42,7 @@ def upcoming_sessions(request):
 
 
 @extend_schema(
-    responses=HallAssignmentSerializer,
+    responses=HallAndStudentAssignmentSerializer,
     description="Get exam session and hall assignment for a particular student",
 )
 @api_view(["GET"])
@@ -50,7 +50,7 @@ def upcoming_sessions(request):
 def student_exam_details(request, student_id):
     """
     GET /api/events/student/{student_id}/
-    Returns the ExamSession and specific HallAssignment for a student.
+    Returns the ExamSession and specific HallAndStudentAssignment for a student.
     """
     try:
         enrollment = StudentExamEnrollment.objects.select_related(
@@ -67,7 +67,7 @@ def student_exam_details(request, student_id):
     return Response(
         {
             "session": ExamSessionSerializer(enrollment.session).data,
-            "hall_assignment": HallAssignmentSerializer(
+            "hall_assignment": HallAndStudentAssignmentSerializer(
                 enrollment.hall_assignment,
             ).data,
         },
@@ -85,7 +85,7 @@ def student_exam_details(request, student_id):
 def student_full_exam_details(request, student_id):
     """
     GET /api/events/student-full/{student_id}/
-    Returns the full ExamSession, HallAssignment, QuestionSet, Questions,
+    Returns the full ExamSession, HallAndStudentAssignment, Questions,
     and Answers for a student's enrollment.
     """
     try:
@@ -94,10 +94,6 @@ def student_full_exam_details(request, student_id):
                 "session__exam__program",
                 "session__exam__subject",
                 "hall_assignment__hall",
-                "hall_assignment__question_sets",
-            )
-            .prefetch_related(
-                "hall_assignment__question_sets__questions__answers",
             )
             .get(candidate__id=student_id)
         )

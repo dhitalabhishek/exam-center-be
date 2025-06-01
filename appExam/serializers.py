@@ -8,9 +8,8 @@ from appInstitutions.serializers import SubjectSerializer
 from .models import Answer
 from .models import Exam
 from .models import ExamSession
-from .models import HallAssignment
+from .models import HallAndStudentAssignment
 from .models import Question
-from .models import QuestionSet
 from .models import StudentExamEnrollment
 
 
@@ -43,35 +42,21 @@ class QuestionWithAnswersSerializer(serializers.ModelSerializer):
         fields = ["id", "text", "answers"]
 
 
-class QuestionSetSerializer(serializers.ModelSerializer):
-    questions = QuestionWithAnswersSerializer(
-        many=True,
-        read_only=True,
-        source="questions",
-    )
-
-    class Meta:
-        model = QuestionSet
-        fields = ["id", "name", "questions"]
 
 
-class HallAssignmentSerializer(serializers.ModelSerializer):
+class HallAndStudentAssignmentSerializer(serializers.ModelSerializer):
     hall = serializers.StringRelatedField(read_only=True)
     roll_number_range = serializers.CharField(read_only=True)
 
-    # if you want to include question_sets on the assignment detail:
-    question_sets = QuestionSetSerializer(
-        many=True, read_only=True, source="question_sets",
-    )
 
     class Meta:
-        model = HallAssignment
-        fields = ["id", "hall", "roll_number_range", "question_sets"]
+        model = HallAndStudentAssignment
+        fields = ["id", "hall", "roll_number_range"]
 
 
 class ExamSessionSerializer(serializers.ModelSerializer):
     exam = ExamSerializer(read_only=True)
-    hall_assignments = HallAssignmentSerializer(
+    hall_assignments = HallAndStudentAssignmentSerializer(
         many=True, read_only=True, source="hall_assignments",
     )
 
@@ -90,7 +75,7 @@ class ExamSessionSerializer(serializers.ModelSerializer):
 class StudentExamEnrollmentSerializer(serializers.ModelSerializer):
     candidate = CandidateSerializer(read_only=True)
     session = ExamSessionSerializer(read_only=True)
-    hall_assignment = HallAssignmentSerializer(read_only=True)
+    hall_assignment = HallAndStudentAssignmentSerializer(read_only=True)
 
     class Meta:
         model = StudentExamEnrollment

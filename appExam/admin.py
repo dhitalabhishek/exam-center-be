@@ -1,4 +1,3 @@
-# appExam/admin.py
 
 from django.contrib import admin
 
@@ -6,9 +5,8 @@ from .models import Answer
 from .models import Exam
 from .models import ExamSession
 from .models import Hall
-from .models import HallAssignment
+from .models import HallAndStudentAssignment
 from .models import Question
-from .models import QuestionSet
 from .models import StudentExamEnrollment
 
 
@@ -25,8 +23,8 @@ class ExamAdmin(admin.ModelAdmin):
     list_per_page = 10
 
 
-class HallAssignmentInline(admin.TabularInline):
-    model = HallAssignment
+class HallAndStudentAssignmentInline(admin.TabularInline):
+    model = HallAndStudentAssignment
     extra = 1
     fields = ("hall", "roll_number_range", "numeric_rolls")
     show_change_link = True
@@ -43,23 +41,17 @@ class HallAssignmentInline(admin.TabularInline):
 @admin.register(ExamSession)
 class ExamSessionAdmin(admin.ModelAdmin):
     list_display = ("id", "exam", "start_time", "end_time", "status")
-    inlines = [HallAssignmentInline]
+    inlines = [HallAndStudentAssignmentInline]
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
 
 
-@admin.register(QuestionSet)
-class QuestionSetAdmin(admin.ModelAdmin):
-    list_display = ("name", "program", "subject")
-    list_filter = ("program", "subject")
-    list_per_page = 10
-    inlines = []  # add inlines if you want to manage Question/Answer here
 
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ("text", "question_set")
+    list_display = ("text", "session")
     list_per_page = 10
 
 
