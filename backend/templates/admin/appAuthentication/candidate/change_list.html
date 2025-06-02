@@ -95,7 +95,7 @@
     
     function selectInstitute(instituteId) {
       // Redirect to import page with selected institute ID
-      window.location.href = '{% url "admin:appAuthentication_candidate_import_csv" %}?institute_id=' + instituteId
+      window.location.href = '{% url "admin:appAuthentication_candidate_import" %}?institute_id=' + instituteId
     }
     
     // Close dialog when clicking outside

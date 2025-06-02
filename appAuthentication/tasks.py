@@ -1,9 +1,11 @@
 # tasks.py
 import csv
 import logging
+import os
 import random
 import string
 
+import pandas as pd
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
@@ -17,34 +19,36 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)
-def process_candidates_csv(self, file_path, institute_id):
+def process_candidates_file(self, file_path, institute_id):
     """
-    Process CSV file and create candidate records in batches
+    Process CSV or Excel file and create candidate records in batches
     """
     try:
         institute = Institute.objects.get(id=institute_id)
+        file_extension = os.path.splitext(file_path)[1].lower()
 
-        with default_storage.open(file_path, "r") as csvfile:
-            content = csvfile.read()
+        # Read file based on extension
+        if file_extension == ".csv":
+            rows = read_csv_file(file_path)
+        elif file_extension in [".xlsx", ".xls"]:
+            rows = read_excel_file(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
 
-        csv_reader = csv.DictReader(content.splitlines())
-
+        total_rows = len(rows)
         batch_size = 100
         processed_rows = 0
         errors = []
         users_batch = []
         candidates_batch = []
 
-        rows = list(csv_reader)
-        total_rows = len(rows)
-
         logger.info(
-            f"Starting to process {total_rows} candidates for institute {institute.name}",
+            f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name}",
         )
 
         for index, row in enumerate(rows):
             try:
-                data = clean_csv_row(row)
+                data = clean_row_data(row)
 
                 symbol = data["symbol_number"]
                 email = data["email"]
@@ -101,9 +105,11 @@ def process_candidates_csv(self, file_path, institute_id):
                 logger.exception(error_msg)
                 errors.append(error_msg)
 
+        # Process remaining candidates
         if candidates_batch:
             processed_rows += process_batch(users_batch, candidates_batch)
 
+        # Clean up the uploaded file
         default_storage.delete(file_path)
 
         logger.info(
@@ -115,6 +121,7 @@ def process_candidates_csv(self, file_path, institute_id):
             "processed_rows": processed_rows,
             "errors": errors,
             "institute_name": institute.name,
+            "file_type": file_extension,
         }
 
     except Exception as e:
@@ -122,28 +129,90 @@ def process_candidates_csv(self, file_path, institute_id):
         raise self.retry(countdown=60, max_retries=3, exc=e)
 
 
+# Keep the old function for backward compatibility
+@shared_task(bind=True)
+def process_candidates_csv(self, file_path, institute_id):
+    """
+    Legacy function - now redirects to the new file processor
+    """
+    return process_candidates_file(self, file_path, institute_id)
+
+
+def read_csv_file(file_path):
+    """
+    Read CSV file and return list of dictionaries
+    """
+    with default_storage.open(file_path, "r") as csvfile:
+        content = csvfile.read()
+
+    csv_reader = csv.DictReader(content.splitlines())
+    return list(csv_reader)
+
+
+def read_excel_file(file_path):
+    """
+    Read Excel file and return list of dictionaries
+    """
+    with default_storage.open(file_path, "rb") as excel_file:
+        # Read the Excel file into a pandas DataFrame
+        df = pd.read_excel(excel_file, engine="openpyxl")
+
+        # Convert DataFrame to list of dictionaries
+        # Handle NaN values by converting them to empty strings
+        df = df.fillna("")
+
+        # Convert all column names to strings and strip whitespace
+        df.columns = df.columns.astype(str).str.strip()
+
+        return df.to_dict("records")
+
+
+def clean_row_data(row):
+    """
+    Clean and validate row data from CSV or Excel
+    Handles both string and numeric data types
+    """
+    def safe_int(value, default=0):
+        """Safely convert value to int"""
+        if pd.isna(value) or value == "":
+            return default
+        try:
+            return int(float(value))  # Convert through float first to handle decimal strings
+        except (ValueError, TypeError):
+            return default
+
+    def safe_str(value):
+        """Safely convert value to string"""
+        if pd.isna(value):
+            return ""
+        return str(value).strip()
+
+    return {
+        "admit_card_id": safe_int(row.get("Admit Card ID")),
+        "profile_id": safe_int(row.get("Profile ID")),
+        "symbol_number": safe_str(row.get("Symbol Number")),
+        "exam_processing_id": safe_int(row.get("Exam Processing Id")),
+        "gender": safe_str(row.get("Gender")).lower(),
+        "citizenship_no": safe_str(row.get("Citizenship No.")),
+        "first_name": safe_str(row.get("Firstname")),
+        "middle_name": safe_str(row.get("Middlename")) or None,
+        "last_name": safe_str(row.get("Lastname")),
+        "dob_nep": safe_str(row.get("DOB (nep)")),
+        "email": safe_str(row.get("email")).lower(),
+        "phone": safe_str(row.get("phone")),
+        "level_id": safe_int(row.get("Level ID")),
+        "level": safe_str(row.get("Level")),
+        "program_id": safe_int(row.get("Program ID")),
+        "program": safe_str(row.get("Program")),
+    }
+
+
+# Keep the old function for backward compatibility
 def clean_csv_row(row):
     """
-    Clean and validate CSV row data
+    Legacy function - now redirects to the new cleaner
     """
-    return {
-        "admit_card_id": int(row.get("Admit Card ID", 0)),
-        "profile_id": int(row.get("Profile ID", 0)),
-        "symbol_number": row.get("Symbol Number", "").strip(),
-        "exam_processing_id": int(row.get("Exam Processing Id", 0)),
-        "gender": row.get("Gender", "").strip().lower(),
-        "citizenship_no": row.get("Citizenship No.", "").strip(),
-        "first_name": row.get("Firstname", "").strip(),
-        "middle_name": row.get("Middlename", "").strip() or None,
-        "last_name": row.get("Lastname", "").strip(),
-        "dob_nep": row.get("DOB (nep)", "").strip(),
-        "email": row.get("email", "").strip().lower(),
-        "phone": row.get("phone", "").strip(),
-        "level_id": int(row.get("Level ID", 0)),
-        "level": row.get("Level", "").strip(),
-        "program_id": int(row.get("Program ID", 0)),
-        "program": row.get("Program", "").strip(),
-    }
+    return clean_row_data(row)
 
 
 @transaction.atomic
@@ -162,3 +231,56 @@ def process_batch(users_batch, candidates_batch):
     except Exception as e:
         logger.error(f"Batch processing failed: {e!s}")
         raise
+
+
+def validate_file_format(file_path):
+    """
+    Validate if the uploaded file has the correct format and required columns
+    """
+    file_extension = os.path.splitext(file_path)[1].lower()
+    required_columns = [
+        "Admit Card ID", "Profile ID", "Symbol Number", "Exam Processing Id",
+        "Gender", "Citizenship No.", "Firstname", "Lastname", "DOB (nep)",
+        "email", "phone", "Level ID", "Level", "Program ID", "Program",
+    ]
+
+    try:
+        if file_extension == ".csv":
+            rows = read_csv_file(file_path)
+        elif file_extension in [".xlsx", ".xls"]:
+            rows = read_excel_file(file_path)
+        else:
+            return {
+                "is_valid": False,
+                "error": f"Unsupported file format: {file_extension}. Please upload CSV or Excel files.",
+            }
+
+        if not rows:
+            return {
+                "is_valid": False,
+                "error": "File is empty or has no data rows.",
+            }
+
+        # Check if required columns exist
+        available_columns = set(rows[0].keys())
+        missing_columns = [col for col in required_columns if col not in available_columns]
+
+        if missing_columns:
+            return {
+                "is_valid": False,
+                "error": f"Missing required columns: {', '.join(missing_columns)}",
+                "available_columns": list(available_columns),
+            }
+
+        return {
+            "is_valid": True,
+            "total_rows": len(rows),
+            "columns": list(available_columns),
+            "file_type": file_extension,
+        }
+
+    except Exception as e:
+        return {
+            "is_valid": False,
+            "error": f"Error reading file: {e!s}",
+        }

@@ -1,0 +1,146 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n admin_urls static admin_modify %}
+{% block title %}
+  {{ title }} | {{ site_title|default:_('Django site admin') }}
+{% endblock %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:appAuthentication_candidate_changelist' %}">{{ opts.verbose_name_plural|capfirst|default:'Candidates' }}</a>
+    &rsaquo; {{ title }}
+  </div>
+{% endblock %}
+{% block content %}
+  <div id="content-main">
+    <div class="module aligned">
+      <h2>{{ title }}</h2>
+
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="form-row">
+          <div>
+            <label>Selected Institute:</label>
+            {% if selected_institute %}
+              <!-- Display selected institute and pass ID as hidden field -->
+              <input type="hidden" name="institute_id" value="{{ selected_institute.id }}" />
+              <strong>{{ selected_institute.name }}</strong>
+              <p class="help">(Selected from previous step)</p>
+            {% else %}
+              <!-- Fallback if no institute preselected -->
+              <select name="institute_id" id="institute_id" required>
+                <option value="">Choose an institute...</option>
+                {% for institute in institutes %}
+                  <option value="{{ institute.id }}">{{ institute.name }}</option>
+                {% endfor %}
+              </select>
+              <p class="help">No institute was selected previously</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label for="csv_file">Select CSV or Excel File:</label>
+            <input type="file" name="candidate_file" accept=".csv,.xlsx,.xls" required />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div style="margin-top: 1em;">
+            <p class="help">
+              <strong>File Format Requirements:</strong>
+            </p>
+            <table style="border-collapse: collapse; width: 100%; font-family: sans-serif;">
+              <thead>
+                <tr style="background-color: #f2f2f2;">
+                  <th style="border: 1px solid #ccc; padding: 8px;">Column Order</th>
+                  <th style="border: 1px solid #ccc; padding: 8px;">Field Name</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">1</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">S.N</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">2</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Admit Card ID</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">3</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Profile ID</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">4</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Symbol Number</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">5</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Exam Processing Id</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">6</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Gender</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">7</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Citizenship No.</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">8</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Firstname</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">9</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Middlename</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">10</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Lastname</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">11</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">DOB (nep)</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">12</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Profile Picture</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">13</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Email</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">14</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Phone</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">15</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Level ID</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">16</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Level</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">17</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Program ID</td>
+                </tr>
+                <tr>
+                  <td style="border: 1px solid #ccc; padding: 8px;">18</td>
+                  <td style="border: 1px solid #ccc; padding: 8px;">Program</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="submit-row">
+          <input type="submit" value="Import Candidates" class="default" />
+          <a href="{% url 'admin:appAuthentication_candidate_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

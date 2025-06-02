@@ -6,10 +6,12 @@ from django.shortcuts import redirect
 from django.shortcuts import render
 from django.urls import path
 
+from appInstitutions.models import Institute
+
 from .models import Candidate
-from .models import Institute
 from .models import User
-from .tasks import process_candidates_csv
+from .tasks import process_candidates_file
+from .tasks import validate_file_format
 
 
 class CustomUserAdmin(admin.ModelAdmin):
@@ -33,13 +35,12 @@ admin.site.register(User, CustomUserAdmin)
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    list_display = ("symbol_number", "first_name", "last_name", "get_institute_name","program_id")
+    list_display = ("symbol_number", "first_name", "last_name", "get_institute_name", "program_id")
     search_fields = ("symbol_number", "first_name", "last_name")
     list_filter = ("institute",)
 
     def get_institute_name(self, obj):
         return obj.institute.name if obj.institute else "No Institute"
-
     get_institute_name.short_description = "Institute"
 
     def changelist_view(self, request, extra_context=None):
@@ -49,19 +50,21 @@ class CandidateAdmin(admin.ModelAdmin):
         extra_context["institutes"] = Institute.objects.all()
         return super().changelist_view(request, extra_context)
 
-    # Add CSV import functionality to CandidateAdmin
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
             path(
-                "import-csv/",
-                self.admin_site.admin_view(self.import_candidates_csv),
-                name="appAuthentication_candidate_import_csv",
+                "import-candidates/",
+                self.admin_site.admin_view(self.import_candidates),
+                name="appAuthentication_candidate_import",
             ),
         ]
         return custom_urls + urls
 
-    def import_candidates_csv(self, request):
+    def import_candidates(self, request):
+        """
+        Import candidates from CSV or Excel files
+        """
         # Get institute_id from GET parameters
         institute_id = request.GET.get("institute_id")
         selected_institute = None
@@ -75,16 +78,20 @@ class CandidateAdmin(admin.ModelAdmin):
                 return redirect("admin:appAuthentication_candidate_changelist")
 
         if request.method == "POST":
-            csv_file = request.FILES.get("csv_file")
+            uploaded_file = request.FILES.get("candidate_file")
             # Get institute_id from POST data
             institute_id = request.POST.get("institute_id")
 
-            if not csv_file:
-                messages.error(request, "Please select a CSV file.")
+            # Validation
+            if not uploaded_file:
+                messages.error(request, "Please select a file.")
                 return redirect(request.get_full_path())
 
-            if not csv_file.name.endswith(".csv"):
-                messages.error(request, "Please upload a CSV file.")
+            # Check file extension
+            allowed_extensions = [".csv", ".xlsx", ".xls"]
+            file_extension = uploaded_file.name.lower().split(".")[-1]
+            if f".{file_extension}" not in allowed_extensions:
+                messages.error(request, "Please upload a CSV or Excel file (.csv, .xlsx, .xls).")
                 return redirect(request.get_full_path())
 
             if not institute_id:
@@ -93,25 +100,40 @@ class CandidateAdmin(admin.ModelAdmin):
 
             try:
                 # Save the file temporarily
-                file_name = f"candidate_imports/{institute_id}_{csv_file.name}"
+                file_name = f"candidate_imports/{institute_id}_{uploaded_file.name}"
                 file_path = default_storage.save(
                     file_name,
-                    ContentFile(csv_file.read()),
+                    ContentFile(uploaded_file.read()),
                 )
 
-                # Start the Celery task
-                task = process_candidates_csv.delay(file_path, institute_id)
+                # Validate file format before processing
+                validation_result = validate_file_format(file_path)
+
+                if not validation_result["is_valid"]:
+                    # Clean up the uploaded file
+                    default_storage.delete(file_path)
+                    messages.error(request, f"File validation failed: {validation_result['error']}")
+                    return redirect(request.get_full_path())
+
+                # Start the Celery task with the new function
+                task = process_candidates_file.delay(file_path, institute_id)
 
                 messages.success(
                     request,
-                    f"CSV upload started! Task ID: {task.id}. "
+                    f"File upload started! Task ID: {task.id}. "
+                    f"Processing {validation_result['total_rows']} rows from {validation_result['file_type']} file. "
                     "Processing will happen in the background. "
                     "You'll be notified when it's complete.",
                 )
-
                 return redirect("admin:appAuthentication_candidate_changelist")
 
             except Exception as e:
+                # Clean up file if it was saved
+                if "file_path" in locals():
+                    try:  # noqa: SIM105
+                        default_storage.delete(file_path)
+                    except:  # noqa: E722, S110
+                        pass
                 messages.error(request, f"Error processing file: {e!s}")
                 return redirect(request.get_full_path())
 
@@ -121,8 +143,9 @@ class CandidateAdmin(admin.ModelAdmin):
             "institutes": institutes,
             "institute_id": institute_id,
             "selected_institute": selected_institute,
-            "title": "Import Candidates CSV",
-            "opts": self.model._meta,
+            "title": "Import Candidates",
+            "opts": self.model._meta,  # noqa: SLF001
             "has_view_permission": True,
+            "allowed_formats": "CSV, Excel (.xlsx, .xls)",
         }
-        return render(request, "admin/import_candidates_csv.html", context)
+        return render(request, "admin/import_candidates.html", context)
