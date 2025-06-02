@@ -64,8 +64,8 @@ class ExamSession(models.Model):
     )
 
     def __str__(self):
-        halls = ", ".join(
-            f"{ha.hall.name} ({ha.roll_number_range})"
+        halls = " ".join(
+            f"{ha.hall.name},"
             for ha in self.hall_assignments.all()
         )
         return f"{self.exam} at {self.start_time.strftime('%Y-%m-%d %H:%M')} in {halls}"
@@ -86,44 +86,18 @@ class HallAndStudentAssignment(models.Model):
     def __str__(self):
         return f"{self.hall.name} [{self.roll_number_range}]"
 
-    def get_numeric_roll_range(self):
-        """
-        Returns the list of all integers between the start and end of the
-        roll_number_range, ignoring any nondigit characters.
-        e.g. "11ch233 - 11CH244" → [11233, 11234, …, 11244]
-        """
-        try:
-            start_str, end_str = [
-                p.strip()
-                for p in self.roll_number_range.split(
-                    "-" if "-" in self.roll_number_range else "-",  # noqa: RUF034
-                )
-            ]
-        except ValueError:
-            msg = "Roll number range must be in the format 'XXX - YYY'"
-            # raise ValidationError(msg)  # noqa: ERA001
-            start_str = msg
-            end_str = msg
-
-        # Remove all non digit characters
-        start_num = int(re.sub(r"\D", "", start_str))
-        end_num = int(re.sub(r"\D", "", end_str))
-
-        if start_num > end_num:
-            msg = "Start of range must be less than or equal to end."
-            raise ValidationError(msg)
-
-        # Build and return the full list of numbers
-        return list(range(start_num, end_num + 1))
-
-    def clean(self):
-        # Just validate the numeric interval makes sense
-        _ = self.get_numeric_roll_range()
-
 
 class Question(models.Model):
     text = models.TextField()
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "text"],
+                name="unique_session_text",
+            ),
+        ]
 
     def __str__(self):
         return self.text[:50]
@@ -156,7 +130,7 @@ class StudentExamEnrollment(models.Model):
         help_text="Stores the order of question IDs assigned to the student.",
     )
 
-    Time_Remaining = models.IntegerField(default=0)
+    Time_Remaining = models.IntegerField(default=15)
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"

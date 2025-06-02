@@ -1,0 +1,52 @@
+{% extends 'admin/base_site.html' %}
+{% load admin_urls %}
+
+{% block title %}
+  Select Exam Session
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:appExam_question_changelist' %}">Questions</a>
+    &rsaquo; Import Questions
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="module">
+    <h1>Select Exam Session</h1>
+    <p>Choose an exam session to import questions into:</p>
+
+    <table class="admin-table" id="result_list" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 10px; background-color: #f0f0f0;">Exam</th>
+          <th style="text-align: left; padding: 10px; background-color: #f0f0f0;">Start Time</th>
+          <th style="text-align: left; padding: 10px; background-color: #f0f0f0;">Status</th>
+          <th style="text-align: left; padding: 10px; background-color: #f0f0f0;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for session in exam_sessions %}
+          <tr class="{% cycle 'row1' 'row2' %}">
+            <td style="padding: 10px;">{{ session.exam }}</td>
+            <td style="padding: 10px;">{{ session.start_time|date:'Y-m-d H:i' }}</td>
+            <td style="padding: 10px;">{{ session.get_status_display }}</td>
+            <td style="padding: 10px;">
+              <a href="{% url 'admin:appExam_question_import_document' session.id %}" class="button">Select</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" style="padding: 10px;">No exam sessions found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="submit-row" style="margin-top: 20px;">
+      <a href="{% url 'admin:appExam_question_changelist' %}" class="button">&larr; Back to Questions</a>
+    </div>
+  </div>
+{% endblock %}

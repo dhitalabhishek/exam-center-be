@@ -33,7 +33,7 @@ admin.site.register(User, CustomUserAdmin)
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    list_display = ("symbol_number", "first_name", "last_name", "get_institute_name")
+    list_display = ("symbol_number", "first_name", "last_name", "get_institute_name","program_id")
     search_fields = ("symbol_number", "first_name", "last_name")
     list_filter = ("institute",)
 

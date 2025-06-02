@@ -33,3 +33,4 @@ django-storages[boto3]
 django-prometheus
 django-jazzmin
 django-ckeditor
+python-docx

@@ -1,8 +1,4 @@
-# appInstitutions/models.py
-
 from django.db import models
-
-from appInstitutions.tasks import delete_institute_and_all_users
 
 
 class Institute(models.Model):
@@ -19,15 +15,7 @@ class Institute(models.Model):
     def __str__(self):
         return self.name
 
-    def delete(self, using=None, keep_parents=False):  # noqa: FBT002
-        """
-        Instead of immediately removing this row,
-        1) Enqueue our Celery chain to delete all candidates/users and then delete the institute.
-        2) Return, leaving the actual deletion to Celery (in delete_institute_record).
-        """
-        delete_institute_and_all_users(self.id)
-        # Do NOT call super().delete() here. The second task (delete_institute_record)
-        # will remove this Institute once all users/candidates are cleaned up.
+    # REMOVE the custom delete() method entirely - no more loop!
 
 
 class Subject(models.Model):

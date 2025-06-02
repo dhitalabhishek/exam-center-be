@@ -1,107 +1,77 @@
-# appInstitutions/tasks.py
-
 import logging
 
-from celery import chain
 from celery import shared_task
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
-BATCH_SIZE = 500  # Adjust this batch size if you want larger or smaller chunks
-
+BATCH_SIZE = 500
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def delete_users_by_institute(self, institute_id):
+def delete_institute_and_all_users(self, institute_id):
     """
-    1) In batches of BATCH_SIZE, delete all User objects whose linked Candidate.institute == institute_id.
-       Because Candidate.user has on_delete=CASCADE, deleting each User also removes that Candidate.
-    2) Repeat until no Candidate remains for this institute.
-    3) Return institute_id so the chained task can delete the Institute itself.
+    Single task that:
+    1) Deletes all users/candidates in batches
+    2) Deletes the institute record
+    No chaining needed - everything happens in one task to avoid loops.
     """
     try:
-        # Import inside the function to avoid a circular-import at module load time
+        # Import inside the function to avoid circular imports
         from django.contrib.auth import get_user_model
 
         from appAuthentication.models import Candidate
+        from appInstitutions.models import Institute
 
         User = get_user_model()
         total_deleted = 0
 
-        # Keep looping as long as there are still Candidate rows for this institute
+        logger.info(f"[delete_institute_and_all_users] Starting deletion for institute {institute_id}")
+
+        # Step 1: Delete all users/candidates in batches
         qs = Candidate.objects.filter(institute_id=institute_id).select_related("user")
         while qs.exists():
             batch = qs[:BATCH_SIZE]
             user_ids = [cand.user.id for cand in batch if cand.user_id]
 
             if user_ids:
-                # Deleting the Users in one call; each User→Candidate will cascade
+                # Delete users in batch - cascade will remove candidates
                 deleted_info = User.objects.filter(id__in=user_ids).delete()
                 total_deleted += deleted_info[0]
                 logger.info(
-                    "[delete_users_by_institute] Deleted %d users (cascade_total=%s) for institute=%s",
-                    len(user_ids),
-                    deleted_info,
-                    institute_id,
+                    f"[delete_institute_and_all_users] Deleted {len(user_ids)} users "
+                    f"(cascade_total={deleted_info}) for institute={institute_id}",
                 )
 
-            # Refresh the queryset to see if any Candidate rows remain
-            qs = Candidate.objects.filter(institute_id=institute_id).select_related(
-                "user",
-            )
+            # Refresh queryset
+            qs = Candidate.objects.filter(institute_id=institute_id).select_related("user")
 
         logger.info(
-            "[delete_users_by_institute] Finished deleting all users for institute %s; total rows deleted (incl. cascades)=%d",
-            institute_id,
-            total_deleted,
+            f"[delete_institute_and_all_users] Finished deleting all users for institute {institute_id}; "
+            f"total rows deleted (incl. cascades)={total_deleted}",
         )
-        return institute_id
+
+        # Step 2: Delete the institute itself
+        with transaction.atomic():
+            try:
+                inst = Institute.objects.get(pk=institute_id)
+                # Use Django's ORM delete() - this will cascade to Subject, Program, etc.
+                inst.delete()
+                logger.info(f"[delete_institute_and_all_users] Institute {institute_id} deleted successfully.")
+            except Institute.DoesNotExist:
+                logger.warning(f"[delete_institute_and_all_users] Institute {institute_id} does not exist.")
+
+        return f"Institute {institute_id} and all related data removed successfully"
 
     except Exception as exc:
         logger.exception(
-            "[delete_users_by_institute] Error while deleting users for institute %s",
-            institute_id,
+            f"[delete_institute_and_all_users] Error while deleting institute {institute_id}",
         )
         # Retry up to 3 times with 30s delay
         raise self.retry(exc=exc)
 
 
-@shared_task(bind=True)
-def delete_institute_record(self, institute_id):
-    """
-    Deletes the Institute record itself. Should run only after delete_users_by_institute
-    has removed every Candidate/User for that institute.
-    """
-    try:
-        from django.db import transaction
-
-        from appInstitutions.models import Institute
-
-        with transaction.atomic():
-            inst = Institute.objects.get(pk=institute_id)
-            inst.delete()  # This cascades on Subjects, Programs, etc.
-            logger.info("[delete_institute_record] Institute %s deleted.", institute_id)
-    except Institute.DoesNotExist:
-        logger.warning(
-            "[delete_institute_record] Institute %s does not exist.", institute_id,
-        )
-    except Exception as exc:
-        logger.exception(
-            "[delete_institute_record] Failed to delete Institute %s", institute_id,
-        )
-        raise self.retry(exc=exc)
-
-    return f"Institute {institute_id} removed"
 
 
-def delete_institute_and_all_users(institute_id):
-    """
-    Utility function to enqueue:
-      1) delete_users_by_institute(institute_id)
-      2) delete_institute_record(institute_id)
-    in a chain. Returns the AsyncResult so you can monitor if desired.
-    """
-    # NOTE: bind institute_id only into the first task. The second task gets it
-    # automatically from the first task’s return value.
-    return chain(
-        delete_users_by_institute.s(institute_id),
-        delete_institute_record.s(),
-    ).delay()
+
+
+
+
