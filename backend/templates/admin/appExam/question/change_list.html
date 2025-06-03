@@ -1,0 +1,9 @@
+<!-- templates/admin/appExam/question/change_list.html -->
+{% extends 'admin/change_list.html' %}
+{% load admin_urls %}
+
+{% block content_title %}
+  {{ content_title }}
+  <a href="{{ import_questions_url }}" class="btn btn-primary" style="margin-left: 10px; padding: 5px 10px; background-color: #417690; color: white; text-decoration: none; border-radius: 4px;">📄 Import Questions from Document</a>
+{% endblock %}
+

@@ -1,0 +1,261 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n admin_urls static %}
+
+{% block title %}
+  {{ title }} | {{ site_title|default:_('Django site admin') }}
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:appExam_examsession_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; <a href="{% url 'admin:appExam_examsession_change' session.pk %}">{{ session }}</a>
+    &rsaquo; {{ title }}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <div class="module aligned">
+      <h1>Enroll Students by Symbol Number Range</h1>
+
+      <div class="form-row session-details">
+        <h3>Session Details</h3>
+        <p>
+          <strong>Session:</strong> {{ session }}
+        </p>
+        <p>
+          <strong>Program:</strong> {{ session.exam.program.name }}
+        </p>
+        <p>
+          <strong>Subject:</strong> {{ session.exam.subject.name|default:'All Subjects' }}
+        </p>
+        <p>
+          <strong>Start Time:</strong> {{ session.start_time }}
+        </p>
+        <p>
+          <strong>Status:</strong> {{ session.get_status_display }}
+        </p>
+      </div>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <fieldset class="module aligned">
+          <h2>Hall Assignment</h2>
+          <div class="form-row field-hall_assignment">
+            <div>
+              <label for="id_hall_assignment" class="required">Select Hall:</label>
+              {{ form.hall_assignment }}
+              {% if form.hall_assignment.help_text %}
+                <div class="help">{{ form.hall_assignment.help_text }}</div>
+              {% endif %}
+              {% if form.hall_assignment.errors %}
+                <ul class="errorlist">
+                  {% for error in form.hall_assignment.errors %}
+                    <li>{{ error }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </div>
+
+          <h2>Symbol Number Range</h2>
+          <div class="form-row field-range_string">
+            <div>
+              <label for="id_range_string" class="required">Enter Range:</label>
+              {{ form.range_string }}
+              {% if form.range_string.help_text %}
+                <div class="help">{{ form.range_string.help_text }}</div>
+              {% endif %}
+              {% if form.range_string.errors %}
+                <ul class="errorlist">
+                  {% for error in form.range_string.errors %}
+                    <li>{{ error }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="module range-info">
+          <h3>Range Format Examples</h3>
+          <div class="range-columns">
+            <div>
+              <h4>Valid Formats:</h4>
+              <ul>
+                <li>
+                  <code>13-A1-PT - 14-C2-GM</code> (Range across years)
+                </li>
+                <li>
+                  <code>13-A1-PH - 13-B5-GM</code> (Same year range)
+                </li>
+                <li>
+                  <code>17-A6-12</code> (Single symbol)
+                </li>
+                <li>
+                  <code>13-S1-OP - 13-S1-PH</code> (Same section range)
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4>How it Works:</h4>
+              <ol>
+                <li>
+                  Find candidates in program: <strong>{{ session.exam.program.name }}</strong>
+                </li>
+                <li>Check symbol numbers within your range</li>
+                <li>Create enrollments in selected hall</li>
+                <li>Skip already enrolled candidates</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="note">
+            <strong>Note:</strong> This process runs in the background. You’ll receive a confirmation once it starts. Results will be available shortly after.
+          </div>
+        </div>
+
+        <div class="submit-row">
+          <input type="submit" value="Start Enrollment Process" class="default submit-button" />
+          <a href="{% url 'admin:appExam_examsession_change' session.pk %}" class="button cancel-link">Cancel</a>
+        </div>
+      </form>
+
+      {% if session.hall_assignments.all %}
+        <div class="module hall-assignments">
+          <h2>Current Hall Assignments</h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Hall</th>
+                <th>Current Range</th>
+                <th>Enrolled Students</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for assignment in session.hall_assignments.all %}
+                <tr>
+                  <td>{{ assignment.hall.name }}</td>
+                  <td>
+                    {% if assignment.roll_number_range %}
+                      <code>{{ assignment.roll_number_range }}</code>
+                    {% else %}
+                      <em>No range set</em>
+                    {% endif %}
+                  </td>
+                  <td class="center">
+                    <strong>{{ assignment.studentexamenrollment_set.count }}</strong>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <style>
+    .module h1 {
+      color: #2c3e50;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    
+    .module h2 {
+      color: #34495e;
+      font-size: 18px;
+      margin-top: 30px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 6px;
+    }
+    
+    .module h3 {
+      color: #2d3436;
+      font-size: 16px;
+      margin-top: 20px;
+    }
+    
+    .form-row.session-details {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    
+    .range-info {
+      background: #eaf4fb;
+      padding: 20px;
+      border-radius: 6px;
+      margin-top: 30px;
+    }
+    
+    .range-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    .note {
+      background: #fff8e1;
+      padding: 12px;
+      border-left: 5px solid #ffc107;
+      margin-top: 20px;
+      font-size: 14px;
+    }
+    
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    
+    .errorlist {
+      color: #b94a48;
+      margin-top: 5px;
+    }
+    
+    .errorlist li {
+      list-style: none;
+    }
+    
+    .submit-button {
+      background: #28a745;
+      color: white;
+      font-weight: bold;
+    }
+    
+    .cancel-link {
+      margin-left: 10px;
+    }
+    
+    .hall-assignments {
+      margin-top: 30px;
+    }
+    
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    
+    .table th,
+    .table td {
+      padding: 10px;
+      border: 1px solid #ddd;
+    }
+    
+    .table th {
+      background: #f1f1f1;
+      text-align: left;
+    }
+    
+    .table .center {
+      text-align: center;
+    }
+  </style>
+{% endblock %}

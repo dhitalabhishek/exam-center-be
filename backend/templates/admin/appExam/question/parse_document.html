@@ -1,0 +1,123 @@
+
+<!-- templates/admin/appExam/question/parse_document.html -->
+{% extends 'admin/base_site.html' %}
+{% load admin_urls %}
+
+{% block title %}
+  Parse Questions
+{% endblock %}
+
+{% block extrahead %}
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 2s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+    .document-preview {
+      background-color: #f8f8f8;
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin: 10px 0;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:appExam_question_changelist' %}">Questions</a>
+    &rsaquo; <a href="{% url 'admin:appExam_question_import' %}">Import Questions</a>
+    &rsaquo; Parse Document
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>Parse Questions from {{ document_name }}</h1>
+  <h2>Session: {{ session }}</h2>
+
+  <div class="module aligned">
+    <h3>Document Preview:</h3>
+    <div class="document-preview">{{ document_content }}</div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Parsing questions and creating entries...</p>
+  </div>
+
+  <div id="result-message" style="display: none;"></div>
+
+  <div class="submit-row" id="action-buttons">
+    <button type="button" id="parse-btn" class="default">🔍 Parse Questions</button>
+    <a href="{% url 'admin:appExam_question_import_document' session.id %}" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <script>
+    $(document).ready(function () {
+      $('#parse-btn').click(function () {
+        var button = $(this)
+        button.prop('disabled', true)
+        $('#loading').show()
+        $('#action-buttons').hide()
+    
+        $.ajax({
+          url: '{% url "admin:appExam_question_parse" %}',
+          type: 'POST',
+          data: {
+            csrfmiddlewaretoken: '{{ csrf_token }}'
+          },
+          success: function (response) {
+            $('#loading').hide()
+            if (response.success) {
+              $('#result-message')
+                .html('<div class="success" style="background-color: #dfd; border: 1px solid #4f8a10; padding: 10px; margin: 10px 0;">' + '<strong>Success!</strong> ' + response.message + '<br><br><a href="' + response.redirect_url + '" class="btn btn-primary">View Questions</a>' + '</div>')
+                .show()
+            } else {
+              $('#result-message')
+                .html('<div class="error" style="background-color: #fdd; border: 1px solid #d00; padding: 10px; margin: 10px 0;">' + '<strong>Error:</strong> ' + (response.error || 'Unknown error occurred') + '</div>')
+                .show()
+              $('#action-buttons').show()
+              button.prop('disabled', false)
+            }
+          },
+          error: function (xhr) {
+            $('#loading').hide()
+            var errorMsg = 'Network error occurred'
+            try {
+              var response = JSON.parse(xhr.responseText)
+              errorMsg = response.error || errorMsg
+            } catch (e) {}
+    
+            $('#result-message')
+              .html('<div class="error" style="background-color: #fdd; border: 1px solid #d00; padding: 10px; margin: 10px 0;">' + '<strong>Error:</strong> ' + errorMsg + '</div>')
+              .show()
+            $('#action-buttons').show()
+            button.prop('disabled', false)
+          }
+        })
+      })
+    })
+  </script>
+{% endblock %}

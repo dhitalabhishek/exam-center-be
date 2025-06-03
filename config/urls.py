@@ -5,38 +5,28 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
-from django.views.generic import TemplateView
+
+# from django.views.generic import TemplateView  # noqa: ERA001
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
-from rest_framework.authtoken.views import obtain_auth_token
+
+admin.site.site_header = "Exam Admin"
+admin.site.site_title = "Admin"
+admin.site.index_title = "Dashboard"
 
 urlpatterns = [
-    path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
-    path(
-        "about/",
-        TemplateView.as_view(template_name="pages/about.html"),
-        name="about",
-    ),
-    # Django Admin, use {% url 'admin:index' %}
+    # Core pages
+    # path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),  # noqa: E501, ERA001
+    # path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),  # noqa: E501, ERA001
+    # Admin
     path(settings.ADMIN_URL, admin.site.urls),
-    # User management
-    path("users/", include("backend.users.urls", namespace="users")),
-    path("accounts/", include("allauth.urls")),
-    # Your stuff: custom urls includes go here
-    # ...
-    # Media files
-    *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
-]
-if settings.DEBUG:
-    # Static file serving when using Gunicorn + Uvicorn for local web socket development
-    urlpatterns += staticfiles_urlpatterns()
-
-# API URLS
-urlpatterns += [
-    # API base url
+    # Monitoring
+    path("", include("django_prometheus.urls")),
+    # App includes
+    # path("users/", include("backend.users.urls", namespace="users")),  # noqa: ERA001
+    # path("accounts/", include("appAuthentication.urls")),  # noqa: ERA001
+    # API
     path("api/", include("config.api_router")),
-    # DRF auth token
-    path("api/auth-token/", obtain_auth_token, name="obtain_auth_token"),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(
         "api/docs/",
@@ -45,9 +35,11 @@ urlpatterns += [
     ),
 ]
 
+# Development only
 if settings.DEBUG:
-    # This allows the error pages to be debugged during development, just visit
-    # these url in browser to see how these error pages look like.
+    urlpatterns += staticfiles_urlpatterns()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
     urlpatterns += [
         path(
             "400/",
@@ -66,10 +58,8 @@ if settings.DEBUG:
         ),
         path("500/", default_views.server_error),
     ]
+
     if "debug_toolbar" in settings.INSTALLED_APPS:
         import debug_toolbar
 
-        urlpatterns = [
-            path("__debug__/", include(debug_toolbar.urls)),
-            *urlpatterns,
-        ]
+        urlpatterns = [path("__debug__/", include(debug_toolbar.urls)), *urlpatterns]

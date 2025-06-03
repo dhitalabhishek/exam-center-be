@@ -12,3 +12,18 @@ REDIS_URL=redis://redis:6379/0
 # Flower
 CELERY_FLOWER_USER=debug
 CELERY_FLOWER_PASSWORD=debug
+
+# enable debugging
+# ------------------------------------------------------------------------------
+DEBUG=True
+
+
+# minio setup
+MINIO_ROOT_USER=admin
+MINIO_ROOT_PASSWORD=admin123
+AWS_STORAGE_BUCKET_NAME=exambucket
+AWS_S3_ENDPOINT_URL=http://minio:9000
+
+#fow hwt authencation
+JWT_SIGNING_KEY=5M)4aGB68v^rDd%VZ@M&pxxk#u1JazKdyhFg&ZxLr49E89B&29x6r#E$e9J!
+
