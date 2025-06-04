@@ -16,11 +16,16 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          # Write the DEPLOY_SSH_KEY secret exactly, preserving all line-breaks:
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
+
+          # 1) Write and sanitize secrets (strip any CR characters)
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          # Add the server to known_hosts to avoid interactive confirmation:
+          # 2) Debug: ensure it really starts/ends with the correct PEM lines
+          head -n 1 ~/.ssh/id_rsa | sed 's/.*/[BEGIN LINE: & ]/'
+          tail -n 1 ~/.ssh/id_rsa | sed 's/.*/[  END LINE: & ]/'
+
+          # 3) Add server to known_hosts (avoid interactive prompt)
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
       - name: Run deploy script on server
