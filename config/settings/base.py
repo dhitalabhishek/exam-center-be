@@ -218,7 +218,7 @@ SESSION_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-httponly
 CSRF_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#x-frame-options
-X_FRAME_OPTIONS = "DENY"
+X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # EMAIL
 # ------------------------------------------------------------------------------
@@ -368,6 +368,7 @@ SPECTACULAR_SETTINGS = {
 # ------------------------------------------------------------------------------
 
 INSTALLED_APPS += [
+    "appCore",
     "appAuthentication",
     "appInstitutions",
     "appExam",
@@ -387,4 +388,5 @@ JAZZMIN_UI_TWEAKS = {
 
 JAZZMIN_SETTINGS = {
     "hide_apps": ["account", "authtoken", "mfa", "sites"],
+    "show_ui_builder": True,
 }
