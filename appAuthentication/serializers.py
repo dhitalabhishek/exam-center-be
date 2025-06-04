@@ -71,9 +71,7 @@ class AdminLoginSerializer(serializers.Serializer):
 
 class CandidateRegistrationSerializer(serializers.ModelSerializer):
     """
-    When you create a new Candidate:
-    - Use dob_nep as the default password for the linked User.
-    - Drop the old 'generated_password' field entirely.
+    Now uses 'generated_password' instead of 'dob_nep' as the actual password.
     """
 
     class Meta:
@@ -95,29 +93,35 @@ class CandidateRegistrationSerializer(serializers.ModelSerializer):
             "level",
             "program_id",
             "program",
+            "generated_password",  # <-- new field to accept password
         ]
+        extra_kwargs = {
+            "generated_password": {"write_only": True},
+        }
 
     def create(self, validated_data):
         """
-        Create a User whose password is exactly the candidate's DOB (dob_nep).
-        Then create the Candidate without any field.
+        Create a User using 'generated_password', then create Candidate.
         """
-        dob_password = validated_data.get("dob_nep")
-        #  can enforce a strict format for dob_nep (e.g. YYYY-MM-DD),
-        #  add validation here.
+        password = validated_data.pop("generated_password")
 
         user = User.objects.create_user(
             email=validated_data["email"],
-            password=dob_password,
+            password=password,
             is_candidate=True,
         )
 
-        return Candidate.objects.create(user=user, **validated_data)
+        # Create the Candidate with reference to the User and generated_password
+        return Candidate.objects.create(
+            user=user,
+            generated_password=password,
+            **validated_data,
+        )
 
 
 class CandidateLoginSerializer(serializers.Serializer):
     """
-    Candidates now log in with their 'symbol_number' + 'password' (DOB).
+    Candidates now log in with their 'symbol_number' and 'generated_password'.
     """
 
     symbol_number = serializers.CharField()
@@ -127,14 +131,12 @@ class CandidateLoginSerializer(serializers.Serializer):
         symbol_number = data.get("symbol_number")
         password = data.get("password")
 
-        # 1) Find the Candidate by symbol_number:
         try:
             candidate = Candidate.objects.get(symbol_number=symbol_number)
         except Candidate.DoesNotExist:
             msg = "Invalid symbol number."
             raise serializers.ValidationError(msg)  # noqa: B904
 
-        # 2) Grab the associated User and check password (DOB):
         user = candidate.user
         if not user.check_password(password):
             msg = "Invalid password."
@@ -144,7 +146,6 @@ class CandidateLoginSerializer(serializers.Serializer):
             msg = "This user is not a candidate."
             raise serializers.ValidationError(msg)
 
-        # 3) If everything’s OK, stash both user & candidate on validated_data:
         data["user"] = user
         data["candidate"] = candidate
         return data

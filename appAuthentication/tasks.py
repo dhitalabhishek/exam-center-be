@@ -1,8 +1,9 @@
 # tasks.py
-
 import csv
 import logging
 import os
+import random
+import string
 
 import pandas as pd
 from celery import shared_task
@@ -19,11 +20,14 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True)
 def process_candidates_file(self, file_path, institute_id):
+    """
+    Process CSV or Excel file and create candidate records in batches
+    """
     try:
         institute = Institute.objects.get(id=institute_id)
         file_extension = os.path.splitext(file_path)[1].lower()
 
-        # Read file
+        # Read file based on extension
         if file_extension == ".csv":
             rows = read_csv_file(file_path)
         elif file_extension in [".xlsx", ".xls"]:
@@ -32,127 +36,92 @@ def process_candidates_file(self, file_path, institute_id):
             raise ValueError(f"Unsupported file format: {file_extension}")
 
         total_rows = len(rows)
-        batch_size = 100  # Process in batches of 100
+        batch_size = 100
         processed_rows = 0
         errors = []
+        users_batch = []
+        candidates_batch = []
 
-        # Track duplicates within the file
-        seen_symbols_in_file = set()
-        seen_emails_in_file = set()
+        logger.info(
+            f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name}",
+        )
 
-        logger.info(f"Processing {total_rows} candidates for {institute.name}")
+        for index, row in enumerate(rows):
+            try:
+                data = clean_row_data(row)
 
-        # Process in batches
-        for batch_start in range(0, total_rows, batch_size):
-            batch_end = min(batch_start + batch_size, total_rows)
-            batch = rows[batch_start:batch_end]
-            batch_errors = []
-            valid_candidates = []
-
-            # Collect symbols/emails for batch validation
-            batch_symbols = []
-            batch_emails = []
-            cleaned_data = []
-
-            # Clean data and collect identifiers
-            for idx, row in enumerate(batch):
-                abs_idx = batch_start + idx
-                try:
-                    data = clean_row_data(row)
-                    symbol = data["symbol_number"]
-                    email = data["email"]
-
-                    # Skip duplicate within file
-                    if symbol in seen_symbols_in_file:
-                        batch_errors.append(
-                            f"Row {abs_idx + 1}: Duplicate symbol {symbol} in file",
-                        )
-                        continue
-                    if email in seen_emails_in_file:
-                        batch_errors.append(
-                            f"Row {abs_idx + 1}: Duplicate email {email} in file",
-                        )
-                        continue
-
-                    batch_symbols.append(symbol)
-                    batch_emails.append(email)
-                    cleaned_data.append(data)
-
-                except Exception as e:
-                    batch_errors.append(f"Row {abs_idx + 1}: {e!s}")
-
-            # Batch database checks (2 queries per batch)
-            existing_symbols = set(
-                Candidate.objects.filter(symbol_number__in=batch_symbols).values_list(
-                    "symbol_number", flat=True,
-                ),
-            )
-            existing_emails = set(
-                User.objects.filter(email__in=batch_emails).values_list(
-                    "email", flat=True,
-                ),
-            )
-
-            # Validate against DB
-            for data in cleaned_data:
-                abs_idx = batch_start + cleaned_data.index(data)  # Approximate index
                 symbol = data["symbol_number"]
                 email = data["email"]
 
-                if symbol in existing_symbols:
-                    batch_errors.append(
-                        f"Row {abs_idx + 1}: Symbol {symbol} exists in DB",
-                    )
-                    continue
-                if email in existing_emails:
-                    batch_errors.append(
-                        f"Row {abs_idx + 1}: Email {email} exists in DB",
+                if Candidate.objects.filter(symbol_number=symbol).exists():
+                    errors.append(
+                        f"Row {index + 1}: Candidate with symbol number {symbol} already exists",
                     )
                     continue
 
-                # Add to valid candidates
-                valid_candidates.append(data)
-                seen_symbols_in_file.add(symbol)
-                seen_emails_in_file.add(email)
+                if User.objects.filter(email=email).exists():
+                    errors.append(
+                        f"Row {index + 1}: User with email {email} already exists",
+                    )
+                    continue
 
-            # Bulk create valid candidates
-            if valid_candidates:
-                users_batch = [
-                    {"email": c["email"], "raw_password": c["dob_nep"]}
-                    for c in valid_candidates
-                ]
-                candidates_batch = [
-                    {**c, "institute": institute} for c in valid_candidates
-                ]
+                random_password = "".join(
+                    random.choices(string.ascii_letters + string.digits, k=8),
+                )
 
-                try:
-                    created_count = process_batch(users_batch, candidates_batch)
-                    processed_rows += created_count
-                except Exception as e:
-                    batch_errors.append(f"Batch create failed: {e!s}")
+                users_batch.append(
+                    {
+                        "email": email,
+                        "password": random_password,
+                        "is_candidate": True,
+                    },
+                )
 
-            errors.extend(batch_errors)
+                candidates_batch.append(
+                    {
+                        **data,
+                        "institute": institute,
+                        "generated_password": random_password,
+                    },
+                )
 
-            # Update progress
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "current": batch_end,
-                    "total": total_rows,
-                    "processed": processed_rows,
-                    "errors": len(errors),
-                },
-            )
+                if len(candidates_batch) >= batch_size:
+                    processed_rows += process_batch(users_batch, candidates_batch)
+                    users_batch.clear()
+                    candidates_batch.clear()
 
-        # Cleanup
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={
+                            "current": index + 1,
+                            "total": total_rows,
+                            "processed": processed_rows,
+                            "errors": len(errors),
+                        },
+                    )
+
+            except Exception as e:
+                error_msg = f"Row {index + 1}: {e!s}"
+                logger.exception(error_msg)
+                errors.append(error_msg)
+
+        # Process remaining candidates
+        if candidates_batch:
+            processed_rows += process_batch(users_batch, candidates_batch)
+
+        # Clean up the uploaded file
         default_storage.delete(file_path)
-        logger.info(f"Processed {processed_rows}/{total_rows} candidates")
 
-        return {
+        logger.info(
+            f"Completed processing. {processed_rows}/{total_rows} candidates created successfully",
+        )
+
+        return {  # noqa: TRY300
             "total_rows": total_rows,
             "processed_rows": processed_rows,
             "errors": errors,
             "institute_name": institute.name,
+            "file_type": file_extension,
         }
 
     except Exception as e:
@@ -160,17 +129,18 @@ def process_candidates_file(self, file_path, institute_id):
         raise self.retry(countdown=60, max_retries=3, exc=e)
 
 
+# Keep the old function for backward compatibility
 @shared_task(bind=True)
 def process_candidates_csv(self, file_path, institute_id):
     """
-    Legacy function—redirects to the new processor.
+    Legacy function - now redirects to the new file processor
     """
     return process_candidates_file(self, file_path, institute_id)
 
 
 def read_csv_file(file_path):
     """
-    Read CSV file and return list of dictionaries.
+    Read CSV file and return list of dictionaries
     """
     with default_storage.open(file_path, "r") as csvfile:
         content = csvfile.read()
@@ -181,33 +151,41 @@ def read_csv_file(file_path):
 
 def read_excel_file(file_path):
     """
-    Read Excel file (XLSX or XLS) and return list of dictionaries.
+    Read Excel file and return list of dictionaries
     """
     with default_storage.open(file_path, "rb") as excel_file:
         # Read the Excel file into a pandas DataFrame
         df = pd.read_excel(excel_file, engine="openpyxl")
 
-        # Convert DataFrame to list of dicts, replacing NaN with ""
+        # Convert DataFrame to list of dictionaries
+        # Handle NaN values by converting them to empty strings
         df = df.fillna("")
+
+        # Convert all column names to strings and strip whitespace
         df.columns = df.columns.astype(str).str.strip()
+
         return df.to_dict("records")
 
 
 def clean_row_data(row):
     """
-    Clean and validate row data from CSV or Excel.
-    Converts numeric fields safely to int, strings to stripped strings.
+    Clean and validate row data from CSV or Excel
+    Handles both string and numeric data types
     """
 
     def safe_int(value, default=0):
+        """Safely convert value to int"""
         if pd.isna(value) or value == "":
             return default
         try:
-            return int(float(value))
+            return int(
+                float(value),
+            )  # Convert through float first to handle decimal strings
         except (ValueError, TypeError):
             return default
 
     def safe_str(value):
+        """Safely convert value to string"""
         if pd.isna(value):
             return ""
         return str(value).strip()
@@ -232,9 +210,10 @@ def clean_row_data(row):
     }
 
 
+# Keep the old function for backward compatibility
 def clean_csv_row(row):
     """
-    Legacy function—redirects to clean_row_data.
+    Legacy function - now redirects to the new cleaner
     """
     return clean_row_data(row)
 
@@ -242,35 +221,15 @@ def clean_csv_row(row):
 @transaction.atomic
 def process_batch(users_batch, candidates_batch):
     """
-    Bulk-create Users and Candidates in one shot.
-
-    users_batch:   List of dicts: { "email": ..., "raw_password": ... }
-    candidates_batch: List of dicts matching Candidate model fields (minus 'user').
+    Process a batch of users and candidates
     """
     try:
-        # 1) Build User instances (unsaved)
-        user_objs = []
-        for u in users_batch:
-            # Create a User object (unsaved) so we can hash the password
-            user = User(email=u["email"], is_candidate=True)
-            user.set_password(u["raw_password"])
-            user_objs.append(user)
+        created_users = [User.objects.create_user(**u) for u in users_batch]
 
-        # 2) Bulk‐insert all users at once
-        User.objects.bulk_create(user_objs)
+        for user, candidate_data in zip(created_users, candidates_batch, strict=False):
+            Candidate.objects.create(**candidate_data, user=user)
 
-        # At this point, user_objs have their primary key (id) populated if using Django 3.2+.
-
-        # 3) Build Candidate instances (unsaved), linking to the just‐created users
-        candidate_objs = []
-        for user_obj, candidate_data in zip(user_objs, candidates_batch, strict=False):
-            candidate = Candidate(user=user_obj, **candidate_data)
-            candidate_objs.append(candidate)
-
-        # 4) Bulk‐insert all candidates at once
-        Candidate.objects.bulk_create(candidate_objs)
-
-        return len(user_objs)
+        return len(created_users)
 
     except Exception as e:
         logger.error(f"Batch processing failed: {e!s}")
@@ -279,7 +238,7 @@ def process_batch(users_batch, candidates_batch):
 
 def validate_file_format(file_path):
     """
-    Validate that the uploaded file has required columns.
+    Validate if the uploaded file has the correct format and required columns
     """
     file_extension = os.path.splitext(file_path)[1].lower()
     required_columns = [
@@ -312,12 +271,17 @@ def validate_file_format(file_path):
             }
 
         if not rows:
-            return {"is_valid": False, "error": "File is empty or has no data rows."}
+            return {
+                "is_valid": False,
+                "error": "File is empty or has no data rows.",
+            }
 
+        # Check if required columns exist
         available_columns = set(rows[0].keys())
         missing_columns = [
             col for col in required_columns if col not in available_columns
         ]
+
         if missing_columns:
             return {
                 "is_valid": False,
@@ -332,5 +296,8 @@ def validate_file_format(file_path):
             "file_type": file_extension,
         }
 
-    except Exception as e:
-        return {"is_valid": False, "error": f"Error reading file: {e!s}"}
+    except Exception as e:  # noqa: BLE001
+        return {
+            "is_valid": False,
+            "error": f"Error reading file: {e!s}",
+        }
