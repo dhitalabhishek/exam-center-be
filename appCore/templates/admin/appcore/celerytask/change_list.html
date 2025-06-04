@@ -1,0 +1,98 @@
+<!-- appCore/templates/admin/appcore/celerytask/change_list.html -->
+{% extends 'admin/change_list.html' %}
+
+{% block content %}
+  {{ block.super }}
+  <div id="page-load-time" data-value="{% now 'U' %}" style="display:none;"></div>
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script>
+    ;(function ($) {
+      $(document).ready(function () {
+        // Get the initial page load time from hidden element
+        var pageLoadTime = parseFloat($('#page-load-time').data('value'))
+        var autoRefreshEnabled = true
+        var refreshInterval
+    
+        function checkForUpdates() {
+          if (!autoRefreshEnabled) return
+    
+          $.ajax({
+            url: "{% url 'admin:task_last_updated' %}",
+            dataType: 'json',
+            cache: false,
+            success: function (data) {
+              if (data.last_updated > pageLoadTime) {
+                // Fetch updated HTML fragment only
+                $.ajax({
+                  url: window.location.href,
+                  success: function (html) {
+                    var newContent = $(html).find('#result_list').html()
+                    $('#result_list').html(newContent)
+                    pageLoadTime = data.last_updated // Update the timestamp
+                  }
+                })
+              }
+            },
+            error: function () {
+              console.log('Failed to check for task updates')
+            }
+          })
+        }
+    
+        function toggleAutoRefresh() {
+          autoRefreshEnabled = !autoRefreshEnabled
+          if (autoRefreshEnabled) {
+            refreshInterval = setInterval(checkForUpdates, 3000)
+            $('.auto-refresh-toggle').text('Pause Auto-Refresh')
+            $('.auto-refresh-status').html('<span style="display:flex;align-items:center;gap:5px;">' + '<span class="spinner">↻</span>' + 'Auto-refresh active (checks every 3 seconds)' + '</span>')
+          } else {
+            clearInterval(refreshInterval)
+            $('.auto-refresh-toggle').text('Resume Auto-Refresh')
+            $('.auto-refresh-status').html('<span style="display:flex;align-items:center;gap:5px;">' + '↻ Auto-refresh paused' + '</span>')
+          }
+        }
+    
+        // Add status indicator
+        $('.paginator').after('<div class="auto-refresh-status" style="margin:15px 0; padding:8px; background:#f8f8f8; border:1px solid #eee; border-radius:4px; color:#666; font-size:13px;">' + '<span style="display:flex;align-items:center;gap:5px;">' + '<span class="spinner">↻</span>' + 'Auto-refresh active (checks every 3 seconds)' + '</span>' + '</div>')
+    
+        // Add toggle button
+        $('.object-tools').prepend('<li>' + '<a href="#" class="auto-refresh-toggle" style="background:#FF9800; color:white;">' + 'Pause Auto-Refresh' + '</a>' + '</li>')
+    
+        // Add force refresh button
+        $('.object-tools').prepend('<li>' + '<a href="#" class="refresh-link" style="background:#4CAF50; color:white;">' + '⟳ Force Refresh' + '</a>' + '</li>')
+    
+        // Bind toggle function
+        $('.auto-refresh-toggle').click(function (e) {
+          e.preventDefault()
+          toggleAutoRefresh()
+        })
+    
+        // Bind force refresh
+        $('.refresh-link').click(function (e) {
+          e.preventDefault()
+          window.location.reload()
+        })
+    
+        // Start the interval
+        refreshInterval = setInterval(checkForUpdates, 3000)
+      })
+    })(django.jQuery)
+  </script>
+  <style>
+    .spinner {
+      animation: spin 2s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+{% endblock %}

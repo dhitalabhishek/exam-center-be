@@ -19,6 +19,10 @@ urlpatterns = [
     # path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),  # noqa: E501, ERA001
     # path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),  # noqa: E501, ERA001
     # Admin
+    path(
+        f"{settings.ADMIN_URL}flows/exam-creation/",
+        include("appCore.flows.flow_1_handelingExamCreation.flows_urls"),
+    ),
     path(settings.ADMIN_URL, admin.site.urls),
     # Monitoring
     path("", include("django_prometheus.urls")),

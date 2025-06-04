@@ -1,0 +1,225 @@
+<!-- templates/admin/wizard.html -->
+{% extends 'admin/base_site.html' %}
+{% load static %}
+
+{% block title %}
+  Setup Wizard - {{ step_title }}
+{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .wizard-container {
+      padding: 20px;
+    }
+    
+    .wizard-header {
+      background: linear-gradient(135deg, #333 0%, #555 100%);
+      color: white;
+      padding: 30px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    
+    .wizard-progress {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+    
+    .wizard-progress-bar {
+      height: 100%;
+      background: #888;
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
+    
+    .wizard-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      margin: 20px 0;
+    }
+    
+    .wizard-steps {
+      display: flex;
+      justify-content: center;
+      margin: 30px 0;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .step-btn {
+      padding: 10px 15px;
+      border: 2px solid #ccc;
+      background: white;
+      color: #555;
+      text-decoration: none;
+      border-radius: 25px;
+      transition: all 0.3s;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .step-btn:hover {
+      border-color: #333;
+      color: #000;
+      text-decoration: none;
+    }
+    
+    .step-btn.active {
+      background: #333;
+      color: white;
+      border-color: #333;
+    }
+    
+    .admin-frame {
+      border: none;
+      width: 100%;
+      min-height: 600px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      background: white;
+    }
+    
+    .nav-btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.3s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .nav-btn.primary {
+      background: #222;
+      color: white;
+    }
+    
+    .nav-btn.secondary {
+      background: #888;
+      color: white;
+    }
+    
+    .nav-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      text-decoration: none;
+      color: white;
+    }
+    
+    .nav-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .step-info {
+      text-align: center;
+      margin: 20px 0;
+    }
+    
+    @media (max-width: 768px) {
+      .wizard-nav {
+        flex-direction: column;
+        gap: 15px;
+      }
+    
+      .wizard-steps {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="wizard-container">
+    <!-- Wizard Header -->
+    <div class="wizard-header">
+      <h1>{{ step_title }}</h1>
+      <div class="step-info">Step {{ current_step|add:'1' }} of {{ total_steps }}</div>
+      <div class="wizard-progress">
+        <div class="wizard-progress-bar" style="width: {{ progress }}%"></div>
+      </div>
+    </div>
+
+    <!-- Step Navigation -->
+    <div class="wizard-steps">
+      {% for step in all_steps %}
+        <a href="{% url 'exam_wizard_step' step=step.index %}" class="step-btn {% if step.is_current %}active{% endif %}">{{ step.index|add:'1' }}. {{ step.title }}</a>
+      {% endfor %}
+    </div>
+
+    <!-- Embedded Admin Page -->
+    <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <iframe src="{{ admin_url }}" class="admin-frame" id="admin-iframe" onload="adjustIframeHeight()"></iframe>
+    </div>
+
+    <!-- Navigation Controls -->
+    <div class="wizard-nav">
+      <div>
+        {% if has_previous %}
+          <a href="{% url 'exam_wizard_step' step=previous_step %}" class="nav-btn secondary">← Previous</a>
+        {% else %}
+          <span class="nav-btn secondary" style="opacity: 0.5;">← Previous</span>
+        {% endif %}
+      </div>
+
+      <div class="step-info">
+        <strong>{{ step_title }}</strong>
+        <br />
+        <small>{{ current_step|add:'1' }} of {{ total_steps }}</small>
+      </div>
+
+      <div>
+        {% if has_next %}
+          <a href="{% url 'exam_wizard_step' step=next_step %}" class="nav-btn primary">Next →</a>
+        {% else %}
+          <a href="{% url 'admin:index' %}" class="nav-btn primary">✓ Complete</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function adjustIframeHeight() {
+      const iframe = document.getElementById('admin-iframe')
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document
+        const height = Math.max(iframeDoc.body.scrollHeight, iframeDoc.body.offsetHeight, iframeDoc.documentElement.clientHeight, iframeDoc.documentElement.scrollHeight, iframeDoc.documentElement.offsetHeight)
+        iframe.style.height = Math.max(height, 600) + 'px'
+      } catch (e) {
+        iframe.style.height = '600px'
+      }
+    }
+    
+    
+  document.addEventListener('keydown', function (e) {
+    {% if has_previous %}
+    if (e.key === 'ArrowLeft') {
+      window.location.href = "{% url 'exam_wizard_step' step=previous_step %}"
+    }
+    {% endif %}
+    {% if has_next %}
+    if (e.key === 'ArrowRight') {
+      window.location.href = "{% url 'exam_wizard_step' step=next_step %}"
+    }
+    {% endif %}
+  })
+    
+    window.addEventListener('resize', adjustIframeHeight)
+    setInterval(adjustIframeHeight, 2000)
+  </script>
+{% endblock %}

@@ -1,3 +1,5 @@
+# appExam/tasks/enrollment.py
+
 import logging
 import re
 
@@ -5,11 +7,14 @@ from celery import shared_task
 from django.db import transaction
 
 from appAuthentication.models import Candidate
+from appCore.models import CeleryTask
+from appCore.utils.track_task import track_task
 from appExam.models import ExamSession
 from appExam.models import HallAndStudentAssignment
 from appExam.models import StudentExamEnrollment
 
 logger = logging.getLogger(__name__)
+BATCH_LOG_INTERVAL = 100  # adjust as needed for logging frequency
 
 
 def parse_symbol_number(symbol):
@@ -68,7 +73,7 @@ def is_symbol_in_range(symbol, start_symbol, end_symbol):
             )
             return False
 
-        # For same year ranges like 13-S1-PH to 13-S14-PH
+        # For same-year ranges like 13-S1-PH to 13-S14-PH
         if start_year == end_year == year:
             # Extract letter and number parts from sections
             start_letter = extract_letter_from_section(start_section)
@@ -138,8 +143,8 @@ def parse_range_string(range_string):
     return range_string, range_string
 
 
-@shared_task
-def enroll_students_by_symbol_range(session_id, hall_assignment_id, range_string):
+@shared_task(bind=True)
+def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_string):
     """
     Celery task to enroll students in an exam session based on symbol number range.
 
@@ -151,122 +156,123 @@ def enroll_students_by_symbol_range(session_id, hall_assignment_id, range_string
     Returns:
         dict: Summary of enrollment results
     """
-    try:
-        logger.info(
-            f"Starting enrollment task for session {session_id}, hall {hall_assignment_id}, range {range_string}",
-        )
+    with track_task(self.request.id, "enroll_students_by_symbol_range") as task:
+        try:
+            task.message = f"Starting enrollment for session={session_id}, hall={hall_assignment_id}"
+            task.progress = 5
+            task.save()
 
-        # Get the session and hall assignment
-        session = ExamSession.objects.get(id=session_id)
-        hall_assignment = HallAndStudentAssignment.objects.get(id=hall_assignment_id)
-
-        logger.info(f"Found session: {session}")
-        logger.info(f"Found hall assignment: {hall_assignment}")
-
-        # Parse the range
-        start_symbol, end_symbol = parse_range_string(range_string)
-        logger.info(f"Parsed range: {start_symbol} to {end_symbol}")
-
-        # Get the program from the exam session
-        program = session.exam.program
-        logger.info(f"Program: {program} (ID: {program.id}, Name: {program.name})")
-
-        # FIXED: Get all candidates for this program
-        # The Candidate model has program_id (IntegerField) and program (CharField)
-        # Based on your debug, candidates are found by program_id using program.program_id
-        candidates = Candidate.objects.filter(program_id=program.program_id)
-
-        logger.info(f"Found {candidates.count()} candidates for program")
-
-        # Debug: Show some candidates
-        for candidate in candidates[:5]:  # Show first 5
             logger.info(
-                f"Candidate: {candidate.symbol_number} - {candidate.first_name} {candidate.last_name}",
+                f"Starting enrollment task for session {session_id}, "
+                f"hall {hall_assignment_id}, range {range_string}",
             )
 
-        enrolled_count = 0
-        skipped_count = 0
-        error_count = 0
-        errors = []
-        candidates_in_range = []
+            # Fetch session and hall assignment
+            session = ExamSession.objects.get(id=session_id)
+            hall_assignment = HallAndStudentAssignment.objects.get(
+                id=hall_assignment_id,
+            )
 
-        with transaction.atomic():
-            for candidate in candidates:
-                try:
-                    logger.debug(f"Checking candidate {candidate.symbol_number}")
+            task.message = "Loaded session and hall assignment"
+            task.progress = 15
+            task.save()
 
-                    # Check if candidate's symbol is in range
-                    if is_symbol_in_range(
-                        candidate.symbol_number, start_symbol, end_symbol,
-                    ):
-                        logger.info(f"Candidate {candidate.symbol_number} is in range")
-                        candidates_in_range.append(candidate.symbol_number)
+            # Parse the range
+            start_symbol, end_symbol = parse_range_string(range_string)
+            task.message = f"Parsed symbol range: {start_symbol} to {end_symbol}"
+            task.progress = 20
+            task.save()
 
-                        # Check if already enrolled
-                        existing_enrollment = StudentExamEnrollment.objects.filter(
-                            candidate=candidate,
-                            session=session,
-                        ).first()
+            # Get all candidates for this program
+            program = session.exam.program
+            candidates = Candidate.objects.filter(program_id=program.program_id)
+            total_candidates = candidates.count()
 
-                        if existing_enrollment:
-                            logger.info(
-                                f"Candidate {candidate.symbol_number} already enrolled, skipping",
+            task.message = (
+                f"Found {total_candidates} candidates for program {program.name}"
+            )
+            task.progress = 30
+            task.save()
+
+            enrolled_count = 0
+            skipped_count = 0
+            error_count = 0
+            errors = []
+            candidates_in_range = []
+
+            with transaction.atomic():
+                for idx, candidate in enumerate(candidates, start=1):
+                    try:
+                        if is_symbol_in_range(
+                            candidate.symbol_number, start_symbol, end_symbol,
+                        ):
+                            candidates_in_range.append(candidate.symbol_number)
+
+                            # Check existing enrollment
+                            existing = StudentExamEnrollment.objects.filter(
+                                candidate=candidate, session=session,
+                            ).first()
+                            if existing:
+                                skipped_count += 1
+                            else:
+                                StudentExamEnrollment.objects.create(
+                                    candidate=candidate,
+                                    session=session,
+                                    time_remaining=session.duration,
+                                    hall_assignment=hall_assignment,
+                                )
+                                enrolled_count += 1
+
+                        # Periodically update progress
+                        if idx % BATCH_LOG_INTERVAL == 0 or idx == total_candidates:
+                            percent = 30 + int(60 * (idx / total_candidates))
+                            task.message = (
+                                f"Processed {idx}/{total_candidates} candidates; "
+                                f"enrolled={enrolled_count}, skipped={skipped_count}"
                             )
-                            skipped_count += 1
-                            continue
+                            task.progress = min(90, percent)
+                            task.save()
 
-                        # Create enrollment
-                        StudentExamEnrollment.objects.create(
-                            candidate=candidate,
-                            session=session,
-                            time_remaining=session.duration,
-                            hall_assignment=hall_assignment,
-                        )
-                        logger.info(f"Enrolled candidate {candidate.symbol_number}")
-                        enrolled_count += 1
-                    else:
-                        logger.debug(
-                            f"Candidate {candidate.symbol_number} not in range",
-                        )
+                    except Exception as e:
+                        logger.error(f"Error processing {candidate.symbol_number}: {e}")
+                        error_count += 1
+                        errors.append(f"{candidate.symbol_number}: {e}")
 
-                except Exception as e:
-                    logger.error(
-                        f"Error processing candidate {candidate.symbol_number}: {e}",
-                    )
-                    error_count += 1
-                    errors.append(f"Candidate {candidate.symbol_number}: {e!s}")
+            # Update the hall assignment with the processed range
+            hall_assignment.roll_number_range = range_string
+            hall_assignment.save()
 
-        # Update the hall assignment with the processed range
-        hall_assignment.roll_number_range = range_string
-        hall_assignment.save()
+            task.message = f"Enrollment complete: {enrolled_count} enrolled, {skipped_count} skipped, {error_count} errors"
+            task.progress = 95
+            task.save()
 
-        logger.info(
-            f"Enrollment complete: {enrolled_count} enrolled, {skipped_count} skipped, {error_count} errors",
-        )
-        logger.info(f"Candidates in range: {candidates_in_range}")
+            result = {
+                "success": True,
+                "session_id": session_id,
+                "hall_assignment_id": hall_assignment_id,
+                "range_processed": range_string,
+                "enrolled_count": enrolled_count,
+                "skipped_count": skipped_count,
+                "error_count": error_count,
+                "errors": errors[:10],
+                "total_candidates_checked": total_candidates,
+                "candidates_in_range": candidates_in_range,
+            }
 
-        result = {
-            "success": True,
-            "session_id": session_id,
-            "hall_assignment_id": hall_assignment_id,
-            "range_processed": range_string,
-            "enrolled_count": enrolled_count,
-            "skipped_count": skipped_count,
-            "error_count": error_count,
-            "errors": errors[:10] if errors else [],  # Limit to first 10 errors
-            "total_candidates_checked": candidates.count(),
-            "candidates_in_range": candidates_in_range,
-        }
+            task.status = CeleryTask.STATUS_CHOICES[5][0]  # SUCCESS
+            task.result = str(result)
+            task.progress = 100
+            task.save()
 
-        return result
+            return result
 
-    except Exception as e:
-        logger.error(f"Fatal error in enrollment task: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "session_id": session_id,
-            "hall_assignment_id": hall_assignment_id,
-            "range_processed": range_string,
-        }
+        except Exception as e:
+            logger.error(f"Fatal error in enrollment task: {e}")
 
+            task.message = f"Task failed: {e!s}"
+            task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+            task.result = str({"error": str(e)})
+            task.save()
+
+            # Re‐raise so Celery marks it as failed
+            raise

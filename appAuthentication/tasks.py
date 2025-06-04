@@ -1,4 +1,4 @@
-# tasks.py
+# appAuthentication/tasks.py
 import csv
 import logging
 import os
@@ -12,6 +12,10 @@ from django.core.files.storage import default_storage
 from django.db import transaction
 
 from appAuthentication.models import Candidate
+from appCore.models import CeleryTask
+
+# Add these imports
+from appCore.utils.track_task import track_task
 from appInstitutions.models import Institute
 
 User = get_user_model()
@@ -23,110 +27,144 @@ def process_candidates_file(self, file_path, institute_id):
     """
     Process CSV or Excel file and create candidate records in batches
     """
-    try:
-        institute = Institute.objects.get(id=institute_id)
-        file_extension = os.path.splitext(file_path)[1].lower()
+    # Wrap the entire task with track_task context manager
+    with track_task(self.request.id, "process_candidates_file") as task:
+        try:
+            task.message = "Starting candidate import process"
+            task.progress = 5
+            task.save()
 
-        # Read file based on extension
-        if file_extension == ".csv":
-            rows = read_csv_file(file_path)
-        elif file_extension in [".xlsx", ".xls"]:
-            rows = read_excel_file(file_path)
-        else:
-            raise ValueError(f"Unsupported file format: {file_extension}")
+            institute = Institute.objects.get(id=institute_id)
+            file_extension = os.path.splitext(file_path)[1].lower()
 
-        total_rows = len(rows)
-        batch_size = 100
-        processed_rows = 0
-        errors = []
-        users_batch = []
-        candidates_batch = []
+            # Read file based on extension
+            if file_extension == ".csv":
+                task.message = "Reading CSV file"
+                task.save()
+                rows = read_csv_file(file_path)
+            elif file_extension in [".xlsx", ".xls"]:
+                task.message = "Reading Excel file"
+                task.save()
+                rows = read_excel_file(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}")
 
-        logger.info(
-            f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name}",
-        )
+            total_rows = len(rows)
+            if total_rows == 0:
+                task.message = "File is empty - no candidates to process"
+                task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+                task.save()
+                return {"status": "error", "message": "File is empty"}
 
-        for index, row in enumerate(rows):
-            try:
-                data = clean_row_data(row)
+            batch_size = 100
+            processed_rows = 0
+            errors = []
+            users_batch = []
+            candidates_batch = []
 
-                symbol = data["symbol_number"]
-                email = data["email"]
+            logger.info(
+                f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name}",
+            )
 
-                if Candidate.objects.filter(symbol_number=symbol).exists():
-                    errors.append(
-                        f"Row {index + 1}: Candidate with symbol number {symbol} already exists",
+            task.message = f"Processing {total_rows} candidates"
+            task.progress = 10
+            task.save()
+
+            for index, row in enumerate(rows):
+                try:
+                    data = clean_row_data(row)
+
+                    symbol = data["symbol_number"]
+                    email = data["email"]
+
+                    if Candidate.objects.filter(symbol_number=symbol).exists():
+                        errors.append(
+                            f"Row {index + 1}: Candidate with symbol number {symbol} already exists",
+                        )
+                        continue
+
+                    if User.objects.filter(email=email).exists():
+                        errors.append(
+                            f"Row {index + 1}: User with email {email} already exists",
+                        )
+                        continue
+
+                    random_password = "".join(
+                        random.choices(string.ascii_letters + string.digits, k=8),
                     )
-                    continue
 
-                if User.objects.filter(email=email).exists():
-                    errors.append(
-                        f"Row {index + 1}: User with email {email} already exists",
-                    )
-                    continue
-
-                random_password = "".join(
-                    random.choices(string.ascii_letters + string.digits, k=8),
-                )
-
-                users_batch.append(
-                    {
-                        "email": email,
-                        "password": random_password,
-                        "is_candidate": True,
-                    },
-                )
-
-                candidates_batch.append(
-                    {
-                        **data,
-                        "institute": institute,
-                        "generated_password": random_password,
-                    },
-                )
-
-                if len(candidates_batch) >= batch_size:
-                    processed_rows += process_batch(users_batch, candidates_batch)
-                    users_batch.clear()
-                    candidates_batch.clear()
-
-                    self.update_state(
-                        state="PROGRESS",
-                        meta={
-                            "current": index + 1,
-                            "total": total_rows,
-                            "processed": processed_rows,
-                            "errors": len(errors),
+                    users_batch.append(
+                        {
+                            "email": email,
+                            "password": random_password,
+                            "is_candidate": True,
                         },
                     )
 
-            except Exception as e:
-                error_msg = f"Row {index + 1}: {e!s}"
-                logger.exception(error_msg)
-                errors.append(error_msg)
+                    candidates_batch.append(
+                        {
+                            **data,
+                            "institute": institute,
+                            "generated_password": random_password,
+                        },
+                    )
 
-        # Process remaining candidates
-        if candidates_batch:
-            processed_rows += process_batch(users_batch, candidates_batch)
+                    if len(candidates_batch) >= batch_size:
+                        processed_rows += process_batch(users_batch, candidates_batch)
+                        users_batch.clear()
+                        candidates_batch.clear()
 
-        # Clean up the uploaded file
-        default_storage.delete(file_path)
+                        # Update progress after each batch
+                        progress = min(90, int(10 + 80 * (index + 1) / total_rows))
+                        task.message = f"Processed {index + 1}/{total_rows} candidates"
+                        task.progress = progress
+                        task.save()
 
-        logger.info(
-            f"Completed processing. {processed_rows}/{total_rows} candidates created successfully",
-        )
+                except Exception as e:
+                    error_msg = f"Row {index + 1}: {e!s}"
+                    logger.exception(error_msg)
+                    errors.append(error_msg)
 
-        return {  # noqa: TRY300
-            "total_rows": total_rows,
-            "processed_rows": processed_rows,
-            "errors": errors,
-            "institute_name": institute.name,
-            "file_type": file_extension,
-        }
+            # Process remaining candidates
+            if candidates_batch:
+                processed_rows += process_batch(users_batch, candidates_batch)
 
-    except Exception as e:
-        logger.exception(f"Task failed: {e!s}")
-        raise self.retry(countdown=60, max_retries=3, exc=e)  # noqa: B904
+            # Clean up the uploaded file
+            default_storage.delete(file_path)
+
+            logger.info(
+                f"Completed processing. {processed_rows}/{total_rows} candidates created successfully",
+            )
+
+            # Update task status
+            if errors:
+                task.message = f"Completed with {len(errors)} errors"
+                task.status = CeleryTask.STATUS_CHOICES[3][0]  # PARTIAL_SUCCESS
+            else:
+                task.message = "Successfully processed all candidates"
+                task.status = CeleryTask.STATUS_CHOICES[5][0]  # SUCCESS
+
+            result_data = {
+                "total_rows": total_rows,
+                "processed_rows": processed_rows,
+                "errors": errors,
+                "institute_name": institute.name,
+                "file_type": file_extension,
+            }
+
+            task.result = str(result_data)
+
+            task.progress = 100
+            task.save()
+
+            return result_data  # noqa: TRY300
+
+        except Exception as e:
+            logger.exception(f"Task failed: {e!s}")
+            task.message = f"Task failed: {e!s}"
+            task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+            task.save()
+            raise self.retry(countdown=60, max_retries=3, exc=e)  # noqa: B904
 
 
 # Keep the old function for backward compatibility
