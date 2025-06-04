@@ -86,7 +86,6 @@ def candidate_register_view(request):
             },
             status=status.HTTP_201_CREATED,
         )
-
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -127,27 +126,33 @@ def candidate_login_view(request):
     tokens = get_tokens_for_user(user)
     access_token = tokens["access"]
 
-    # 4) Try to fetch this candidate’s current enrollment (if any)
+    # 4) Try to fetch this candidate's current enrollment (if any)
     try:
         enrollment = StudentExamEnrollment.objects.select_related(
             "session",
+            "session__exam",  # Select the exam through session
+            "session__exam__program",  # Select the program through exam
             "hall_assignment",
+            "hall_assignment__hall",  # Select the hall
         ).get(candidate=candidate)
 
-        # a) Extract shift fields (if they exist on enrollment)
-        shift_id = getattr(enrollment, "shift_id", None)
-        shift_plan_id = getattr(enrollment, "shift_plan_id", None)
-        shift_plan_program_id = getattr(enrollment, "shift_plan_program_id", None)
+        # Extract exam (shift) information
+        exam = enrollment.session.exam
+        shift_id = exam.id  # exam.id is the shift_id
 
-        # b) Extract seat_number from hall_assignment.roll_number_range
+        # Extract exam session (shift plan) information
+        session = enrollment.session
+        shift_plan_id = session.id  # session.id is the shift_plan_id
+        shift_plan_program_id = exam.program.program_id  # exam.program.id is the shift_plan_program_id
+
+        # Extract seat_number from hall_assignment.roll_number_range
         seat_number = (
             enrollment.hall_assignment.roll_number_range
             if enrollment.hall_assignment
             else None
         )
 
-        # c) Extract start_time (HH:MM:SS) and duration (minutes) from session
-        session = enrollment.session
+        # Extract start_time (HH:MM:SS) and duration (minutes) from session
         if session and session.start_time:
             start_time = session.start_time.strftime("%H:%M:%S")
         else:
@@ -155,7 +160,7 @@ def candidate_login_view(request):
 
         if session and session.end_time:
             duration = int(
-                (session.end_time - session.start_time).total_seconds() // 60
+                (session.end_time - session.start_time).total_seconds() // 60,
             )
         else:
             duration = None
@@ -181,9 +186,9 @@ def candidate_login_view(request):
             "id": candidate.program_id,
         },
         "program_id": candidate.program_id,  # integer
-        "shift_id": shift_id,
-        "shift_plan_id": shift_plan_id,
-        "shift_plan_program_id": shift_plan_program_id,
+        "shift_id": shift_id,  # This is exam.id
+        "shift_plan_id": shift_plan_id,  # This is session.id
+        "shift_plan_program_id": shift_plan_program_id,  # This is exam.program.id
         "name": f"{candidate.first_name} {candidate.last_name}",
         "email": candidate.email,
         "phone": candidate.phone,

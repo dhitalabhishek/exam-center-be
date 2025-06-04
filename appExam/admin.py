@@ -133,12 +133,13 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "end_time",
         "status",
         "enroll_students_link",
+        "duration",
     )
     inlines = [HallAndStudentAssignmentInline]
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
-    readonly_fields = ("enroll_students_link",)
+    readonly_fields = ("enroll_students_link", "duration")
 
     def enroll_students_link(self, obj):
         """Add a link to enroll students for this session"""
@@ -167,7 +168,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
 @admin.register(StudentExamEnrollment)
 class StudentExamEnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "session", "hall_assignment", "Time_Remaining")
+    list_display = ("candidate", "session", "hall_assignment", "time_remaining")
     list_filter = ("session__status", "hall_assignment__hall")
     list_per_page = 10
     readonly_fields = ("candidate", "session", "hall_assignment")
@@ -206,7 +207,7 @@ class AnswerAdmin(admin.ModelAdmin):
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ( "text","session", "all_answers")
+    list_display = ("text", "session", "all_answers")
     list_per_page = 10
 
     def all_answers(self, obj):

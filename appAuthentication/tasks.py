@@ -242,7 +242,7 @@ def clean_csv_row(row):
 @transaction.atomic
 def process_batch(users_batch, candidates_batch):
     """
-    Bulk‐create Users and Candidates in one shot.
+    Bulk-create Users and Candidates in one shot.
 
     users_batch:   List of dicts: { "email": ..., "raw_password": ... }
     candidates_batch: List of dicts matching Candidate model fields (minus 'user').
