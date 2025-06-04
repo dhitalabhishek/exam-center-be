@@ -35,9 +35,11 @@ admin.site.register(User, CustomUserAdmin)
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
+    readonly_fields = ("verification_status","user")
     list_display = ("symbol_number", "first_name", "last_name", "get_institute_name", "program_id")
     search_fields = ("symbol_number", "first_name", "last_name")
     list_filter = ("institute",)
+
 
     def get_institute_name(self, obj):
         return obj.institute.name if obj.institute else "No Institute"

@@ -219,8 +219,8 @@ def enroll_students_by_symbol_range(session_id, hall_assignment_id, range_string
                         StudentExamEnrollment.objects.create(
                             candidate=candidate,
                             session=session,
+                            time_remaining=session.duration,
                             hall_assignment=hall_assignment,
-                            Time_Remaining=0,  # Will be set when exam starts
                         )
                         logger.info(f"Enrolled candidate {candidate.symbol_number}")
                         enrolled_count += 1

@@ -116,7 +116,7 @@ def process_candidates_file(self, file_path, institute_id):
             f"Completed processing. {processed_rows}/{total_rows} candidates created successfully",
         )
 
-        return {
+        return {  # noqa: TRY300
             "total_rows": total_rows,
             "processed_rows": processed_rows,
             "errors": errors,
@@ -172,12 +172,15 @@ def clean_row_data(row):
     Clean and validate row data from CSV or Excel
     Handles both string and numeric data types
     """
+
     def safe_int(value, default=0):
         """Safely convert value to int"""
         if pd.isna(value) or value == "":
             return default
         try:
-            return int(float(value))  # Convert through float first to handle decimal strings
+            return int(
+                float(value),
+            )  # Convert through float first to handle decimal strings
         except (ValueError, TypeError):
             return default
 
@@ -239,9 +242,21 @@ def validate_file_format(file_path):
     """
     file_extension = os.path.splitext(file_path)[1].lower()
     required_columns = [
-        "Admit Card ID", "Profile ID", "Symbol Number", "Exam Processing Id",
-        "Gender", "Citizenship No.", "Firstname", "Lastname", "DOB (nep)",
-        "email", "phone", "Level ID", "Level", "Program ID", "Program",
+        "Admit Card ID",
+        "Profile ID",
+        "Symbol Number",
+        "Exam Processing Id",
+        "Gender",
+        "Citizenship No.",
+        "Firstname",
+        "Lastname",
+        "DOB (nep)",
+        "email",
+        "phone",
+        "Level ID",
+        "Level",
+        "Program ID",
+        "Program",
     ]
 
     try:
@@ -263,7 +278,9 @@ def validate_file_format(file_path):
 
         # Check if required columns exist
         available_columns = set(rows[0].keys())
-        missing_columns = [col for col in required_columns if col not in available_columns]
+        missing_columns = [
+            col for col in required_columns if col not in available_columns
+        ]
 
         if missing_columns:
             return {
@@ -279,7 +296,7 @@ def validate_file_format(file_path):
             "file_type": file_extension,
         }
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return {
             "is_valid": False,
             "error": f"Error reading file: {e!s}",
