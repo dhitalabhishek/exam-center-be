@@ -1,107 +1,252 @@
-# appExam/views.py
+# appExam/views.py - Add these APIs to your existing views
 
-from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from django.core.paginator import Paginator
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import ExamSession
-from .models import StudentExamEnrollment
-from .serializers import ExamSessionSerializer
-from .serializers import HallAndStudentAssignmentSerializer
-from .serializers import StudentExamEnrollmentSerializer
+from appExam.models import Answer
+from appExam.models import Question
+from appExam.models import StudentExamEnrollment
+
+from .models import Candidate
 
 
-@extend_schema(
-    responses=ExamSessionSerializer(many=True),
-    description=(
-        "List all upcoming exam sessions with their hall assignments "
-        "and roll number ranges"
-    ),
-)
+# ------------------------- Get Exam Session Details -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def upcoming_sessions(request):
+def get_exam_session_view(request):
     """
-    GET /api/events/upcoming/
-    Returns all ExamSession instances whose start_time is today or later,
-    including each session's halls and roll number ranges.
-    """
-    now = timezone.now()
-    qs = (
-        ExamSession.objects.filter(start_time__gte=now)
-        .select_related("exam__program", "exam__subject")
-        .prefetch_related("hall_assignments__hall")
-        .order_by("start_time")
-    )
-    serializer = ExamSessionSerializer(qs, many=True)
-    return Response(serializer.data)
-
-
-@extend_schema(
-    responses=HallAndStudentAssignmentSerializer,
-    description="Get exam session and hall assignment for a particular student",
-)
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def student_exam_details(request, student_id):
-    """
-    GET /api/events/student/{student_id}/
-    Returns the ExamSession and specific HallAndStudentAssignment for a student.
+    Get exam session details for the authenticated candidate.
+    Returns duration, number of questions, notice, etc.
     """
     try:
+        # Get the candidate from the authenticated user
+        candidate = Candidate.objects.get(user=request.user)
+
+        # Get the enrollment for this candidate
         enrollment = StudentExamEnrollment.objects.select_related(
+            "session",
+            "session__exam",
             "session__exam__program",
             "session__exam__subject",
+            "hall_assignment",
             "hall_assignment__hall",
-        ).get(candidate__id=student_id)
-    except StudentExamEnrollment.DoesNotExist:
+        ).get(candidate=candidate)
+
+        session = enrollment.session
+        exam = session.exam
+
+        # Count total questions for this session
+        total_questions = Question.objects.filter(session=session).count()
+
+        # Calculate duration
+        duration_minutes = None
+        if session.start_time and session.end_time:
+            duration = session.end_time - session.start_time
+            duration_minutes = int(duration.total_seconds() // 60)
+
+        # Get time remaining for this specific candidate
+        time_remaining_minutes = None
+        if enrollment.time_remaining:
+            time_remaining_minutes = int(
+                enrollment.time_remaining.total_seconds() // 60
+            )
+
+        # Build response data
+        session_data = {
+            "session_id": session.id,
+            "exam_id": exam.id,
+            "exam_title": str(exam),
+            "program": exam.program.name,
+            "subject": exam.subject.name if exam.subject else None,
+            "total_marks": exam.total_marks,
+            "description": exam.description,
+            "start_time": session.start_time.isoformat()
+            if session.start_time
+            else None,
+            "end_time": session.end_time.isoformat() if session.end_time else None,
+            "duration_minutes": duration_minutes,
+            "time_remaining_minutes": time_remaining_minutes,
+            "total_questions": total_questions,
+            "notice": session.notice,
+            "status": session.status,
+            "hall_name": enrollment.hall_assignment.hall.name
+            if enrollment.hall_assignment
+            else None,
+            "seat_range": enrollment.hall_assignment.roll_number_range
+            if enrollment.hall_assignment
+            else None,
+        }
+
         return Response(
-            {"detail": "No exam enrollment found for this student."},
+            {
+                "data": session_data,
+                "message": "Exam session details retrieved successfully",
+                "error": None,
+                "status": 200,
+            },
+        )
+
+    except Candidate.DoesNotExist:
+        return Response(
+            {
+                "error": "Candidate profile not found",
+                "status": 404,
+            },
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    return Response(
-        {
-            "session": ExamSessionSerializer(enrollment.session).data,
-            "hall_assignment": HallAndStudentAssignmentSerializer(
-                enrollment.hall_assignment,
-            ).data,
-        },
-    )
+    except StudentExamEnrollment.DoesNotExist:
+        return Response(
+            {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
 
-@extend_schema(
-    responses=StudentExamEnrollmentSerializer,
-    description=(
-        "Get complete exam details for a student including questions and answers"
-    ),
-)
+# ------------------------- Get Paginated Questions -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def student_full_exam_details(request, student_id):
+def get_paginated_questions_view(request):
     """
-    GET /api/events/student-full/{student_id}/
-    Returns the full ExamSession, HallAndStudentAssignment, Questions,
-    and Answers for a student's enrollment.
+    Get paginated questions for the authenticated candidate's exam session.
+    Questions and answers are returned in the randomized order specific to this candidate.
+    Each page contains exactly 1 question.
+
+    Query Parameters:
+    - page: Page number (default: 1)
     """
     try:
-        enrollment = (
-            StudentExamEnrollment.objects.select_related(
-                "session__exam__program",
-                "session__exam__subject",
-                "hall_assignment__hall",
-            )
-            .get(candidate__id=student_id)
+        # Get the candidate from the authenticated user
+        candidate = Candidate.objects.get(user=request.user)
+
+        # Get the enrollment for this candidate
+        enrollment = StudentExamEnrollment.objects.select_related("session").get(
+            candidate=candidate,
         )
-    except StudentExamEnrollment.DoesNotExist:
+
+        # Get pagination parameters - force page_size to 1
+        page = int(request.GET.get("page", 1))
+        page_size = 1  # Always 1 question per page
+
+        # Get the randomized question order for this candidate
+        question_order = enrollment.question_order
+        answer_order = enrollment.answer_order
+
+        if not question_order:
+            return Response(
+                {
+                    "error": "Questions not yet randomized for this candidate",
+                    "status": 400,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create paginator with the randomized question IDs
+        paginator = Paginator(question_order, page_size)
+
+        if page > paginator.num_pages:
+            return Response(
+                {
+                    "error": "Page number out of range",
+                    "status": 404,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get question ID for the current page (only 1 question)
+        page_obj = paginator.get_page(page)
+        question_id = page_obj.object_list[0]  # Get the single question ID
+
+        # Fetch the question and its answers
+        try:
+            question = Question.objects.get(id=question_id)
+
+            # Get randomized answer order for this question
+            randomized_answer_ids = answer_order.get(str(question_id), [])
+
+            # Fetch answers in the randomized order
+            answers_data = []
+            for answer_id in randomized_answer_ids:
+                try:
+                    answer = Answer.objects.get(id=answer_id)
+                    answers_data.append(
+                        {
+                            "id": answer.id,
+                            "text": answer.text,
+                            # Don't include is_correct in the response for security
+                        }
+                    )
+                except Answer.DoesNotExist:
+                    continue
+
+            question_data = {
+                "id": question.id,
+                "text": question.text,
+                "answers": answers_data,
+            }
+
+        except Question.DoesNotExist:
+            return Response(
+                {
+                    "error": "Question not found",
+                    "status": 404,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Build response
+        response_data = {
+            "question": question_data,  # Single question instead of array
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_questions": len(question_order),
+                "has_next": page_obj.has_next(),
+                "has_previous": page_obj.has_previous(),
+                "next_page": page + 1 if page_obj.has_next() else None,
+                "previous_page": page - 1 if page_obj.has_previous() else None,
+            },
+        }
+
         return Response(
-            {"detail": "No exam enrollment found for this student."},
+            {
+                "data": response_data,
+                "message": "Question retrieved successfully",
+                "error": None,
+                "status": 200,
+            }
+        )
+
+    except Candidate.DoesNotExist:
+        return Response(
+            {
+                "error": "Candidate profile not found",
+                "status": 404,
+            },
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    serializer = StudentExamEnrollmentSerializer(enrollment)
-    return Response(serializer.data)
+    except StudentExamEnrollment.DoesNotExist:
+        return Response(
+            {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    except ValueError:
+        return Response(
+            {
+                "error": "Invalid page parameter",
+                "status": 400,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )

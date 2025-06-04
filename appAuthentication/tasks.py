@@ -125,8 +125,8 @@ def process_candidates_file(self, file_path, institute_id):
         }
 
     except Exception as e:
-        logger.error(f"Task failed: {e!s}")
-        raise self.retry(countdown=60, max_retries=3, exc=e)
+        logger.exception(f"Task failed: {e!s}")
+        raise self.retry(countdown=60, max_retries=3, exc=e)  # noqa: B904
 
 
 # Keep the old function for backward compatibility

@@ -35,7 +35,7 @@ custom_urls = [
     # ),
 
     # Exam specific endpoints (“events/upcoming” and “events/student/<id>”)
-    path("events/", include(("appExam.urls", "exam"), namespace="exam")),
+    path("exam/", include(("appExam.urls", "exam"), namespace="exam")),
 ]
 
 app_name = "api"

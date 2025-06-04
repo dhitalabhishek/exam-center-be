@@ -87,7 +87,7 @@ class Candidate(models.Model):
     level = models.CharField(max_length=100)
     program_id = models.IntegerField()
     program = models.CharField(max_length=100)
-    generated_password = models.CharField(max_length=128,default="default_password")
+    generated_password = models.CharField(max_length=128)
     institute = models.ForeignKey(
         Institute,
         on_delete=models.CASCADE,

@@ -1,7 +1,4 @@
 # appExam/models.py
-
-import random
-from collections import defaultdict
 from datetime import timedelta
 
 from ckeditor.fields import RichTextField
@@ -161,59 +158,6 @@ class StudentExamEnrollment(models.Model):
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
-
-    def save(self, *args, **kwargs):
-        """
-        On initial creation (when self._state.adding is True), we want to:
-          1. Fetch all question IDs for this session in one query.
-          2. Randomize that list and assign to self.question_order.
-          3. Fetch all (question_id, answer_id) pairs in one query, group by question_id.
-          4. For each question in the randomized question_order, shuffle its answer IDs and
-             store them under answer_order[str(question_id)].
-          5. Finally, call super().save() once so that both JSONFields get persisted in a single write.
-
-        Subsequent saves (when updating e.g. hall_assignment or Time_Remaining) do not
-        re-shuffle; question_order and answer_order remain intact.
-        """  # noqa: E501
-        from appExam.models import Answer  # avoid circular import
-        from appExam.models import Question  # avoid circular import
-
-        # If this is a brand new instance,
-        # populate the two JSONFields before the first save.
-        if self._state.adding:
-            # 1) Get all question IDs for this session
-            question_ids = list(
-                Question.objects.filter(session=self.session).values_list(
-                    "id",
-                    flat=True,
-                ),
-            )
-            random.shuffle(question_ids)
-            self.question_order = question_ids
-
-            # 2) Fetch all (question_id, answer_id) in a single query
-            all_pairs = Answer.objects.filter(
-                question__session=self.session,
-            ).values_list("question_id", "id")
-            # Group them: { question_id: [answer_id, ...], ... }
-            grouped = defaultdict(list)
-            for qid, aid in all_pairs:
-                grouped[qid].append(aid)
-
-            # 3) For each question in our shuffled question_order, shuffle that questions answers  # noqa: E501
-            ao = {}
-            for qid in question_ids:
-                answer_list = grouped.get(qid, [])
-                random.shuffle(answer_list)
-                ao[str(qid)] = answer_list
-
-            self.answer_order = ao
-
-            # Now call super().save once, writing question_order & answer_order in one go  # noqa: E501
-            super().save(*args, **kwargs)
-        else:
-            # Just a normal update (don't reshuffle)
-            super().save(*args, **kwargs)
 
 
 class StudentAnswer(models.Model):
