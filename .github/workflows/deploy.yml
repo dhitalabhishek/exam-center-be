@@ -3,7 +3,7 @@ name: Deploy to Ubuntu
 on:
   push:
     branches:
-      - main  # Change if your default branch is different
+      - main
 
 jobs:
   deploy:
@@ -19,6 +19,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+          # Debugging step: Check that the SSH key is loaded
+          ssh-add -l || echo "No SSH keys are loaded"
 
       - name: Run deploy script on server
         run: ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "/home/deploy/deploy.sh"

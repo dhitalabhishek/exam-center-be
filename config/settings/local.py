@@ -17,7 +17,7 @@ SECRET_KEY = env(
     default="9Jbn0LuNdOqwe3efr2oBtsCnlASlz4Fi1N4wBge40SCRacGHPzVwgDXnb7VR20P9",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1","django"]  # noqa: S104
+ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "django", "69.62.85.89"]  # noqa: S104
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -96,8 +96,6 @@ AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")
 AWS_S3_REGION_NAME = "us-east-1"
 AWS_S3_ADDRESSING_STYLE = "path"
-
-
 
 
 # SIMPLE_JWT = {  # noqa: ERA001
