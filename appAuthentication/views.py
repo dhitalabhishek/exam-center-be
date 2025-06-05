@@ -1,19 +1,36 @@
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.auth import login
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from django.contrib.auth import authenticate, get_user_model
+from .forms import AdminRegisterForm, DualPasswordAdminLoginForm
+from .serializers import CandidateRegistrationSerializer, CandidateLoginSerializer
 from .models import Candidate
-from .serializers import (
-    AdminRegistrationSerializer,
-    AdminLoginSerializer,
-    CandidateRegistrationSerializer,
-    CandidateLoginSerializer,
-)
 
-User = get_user_model()
+
+def admin_register_view(request):
+    if request.method == 'POST':
+        form = AdminRegisterForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Admin registered successfully. You can now log in.')
+            return redirect('customadmin:login')
+    else:
+        form = AdminRegisterForm()
+    return render(request, 'custom_admin/register.html', {'form': form})
+
+
+def custom_admin_login_view(request):
+    form = DualPasswordAdminLoginForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        user = form.cleaned_data['user']
+        login(request, user)
+        return redirect('admin:index')
+    return render(request, 'custom_admin/login.html', {'form': form})
+
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -22,35 +39,7 @@ def get_tokens_for_user(user):
         'access': str(refresh.access_token),
     }
 
-# ------------------------- Admin Registration -------------------------
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def admin_register_view(request):
-    serializer = AdminRegistrationSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.save()
-        tokens = get_tokens_for_user(user)
-        return Response({
-            "message": "Admin registered successfully.",
-            "tokens": tokens
-        }, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# ------------------------- Admin Login -------------------------
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def admin_login_view(request):
-    serializer = AdminLoginSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
-        tokens = get_tokens_for_user(user)
-        return Response({
-            "message": "Admin logged in successfully.",
-            "tokens": tokens
-        }, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# ------------------------- Candidate Registration -------------------------
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def candidate_register_view(request):
@@ -66,7 +55,7 @@ def candidate_register_view(request):
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# ------------------------- Candidate Login -------------------------
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def candidate_login_view(request):
