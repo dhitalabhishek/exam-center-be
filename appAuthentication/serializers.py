@@ -1,78 +1,86 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-# <<<<<<< HEAD
-# from .models import Candidate, User
-# import random, string
-# =======
 
-# from .models import Candidate
-#
-# User = get_user_model()
-#
-#
-# class AdminRegistrationSerializer(serializers.Serializer):
-#     email = serializers.EmailField()
-#     password1 = serializers.CharField(write_only=True)
-#     confirm_password1 = serializers.CharField(write_only=True)
-#     password2 = serializers.CharField(write_only=True)
-#     confirm_password2 = serializers.CharField(write_only=True)
-#
-#     def validate(self, data):
-#         if data["password1"] != data["confirm_password1"]:
-#             msg = "Password 1 and Confirm Password 1 do not match."
-#             raise serializers.ValidationError(
-#                 msg,
-#             )
-#         if data["password2"] != data["confirm_password2"]:
-#             msg = "Password 2 and Confirm Password 2 do not match."
-#             raise serializers.ValidationError(
-#                 msg,
-#             )
-#         if data["password1"] == data["password2"]:
-#             msg = "Password 1 and Password 2 must be different."
-#             raise serializers.ValidationError(
-#                 msg,
-#             )
-#         return data
-#
-#     def create(self, validated_data):
-#         user = User.objects.create_user(
-#             email=validated_data["email"],
-#             password=validated_data["password1"],
-#             is_admin=True,
-#             is_staff=True,
-#         )
-#         user.admin_password2 = validated_data["password2"]
-#         user.save()
-#         return user
-#
-#
-# class AdminLoginSerializer(serializers.Serializer):
-#     email = serializers.EmailField()
-#     password1 = serializers.CharField(write_only=True)
-#     password2 = serializers.CharField(write_only=True)
-#
-#     def validate(self, data):
-#         email = data.get("email")
-#         password1 = data.get("password1")
-#         password2 = data.get("password2")
-#
-#         user = authenticate(username=email, password=password1)
-#         if not user:
-#             msg = "Invalid email or password1."
-#             raise serializers.ValidationError(msg)
-#         if not user.is_admin:
-#             msg = "This user is not an admin."
-#             raise serializers.ValidationError(msg)
-#         if user.admin_password2 != password2:
-#             msg = "Password 2 is incorrect."
-#             raise serializers.ValidationError(msg)
-#
-#         data["user"] = user
-#         return data
+from .models import Candidate
 
-# >>>>>>> a8416a142922ea8ee452af8940ffdc62568eab20
+User = get_user_model()
+
+
+class AdminRegistrationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password1 = serializers.CharField(write_only=True)
+    confirm_password1 = serializers.CharField(write_only=True)
+    password2 = serializers.CharField(write_only=True)
+    confirm_password2 = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data["password1"] != data["confirm_password1"]:
+            msg = "Password 1 and Confirm Password 1 do not match."
+            raise serializers.ValidationError(
+                msg,
+            )
+        if data["password2"] != data["confirm_password2"]:
+            msg = "Password 2 and Confirm Password 2 do not match."
+            raise serializers.ValidationError(
+                msg,
+            )
+        if data["password1"] == data["password2"]:
+            msg = "Password 1 and Password 2 must be different."
+            raise serializers.ValidationError(
+                msg,
+            )
+        return data
+
+    def create(self, validated_data):
+        """
+        Create a User using 'generated_password', then create Candidate.
+        """
+        password = validated_data.pop("generated_password")
+
+        user = User.objects.create_user(
+            email=validated_data["email"],
+
+            password=validated_data["password1"],
+            is_admin=True,
+            is_staff=True,
+        )
+        user.admin_password2 = validated_data["password2"]
+        user.save()
+        return user
+
+        # Create the Candidate with reference to the User and generated_password
+        return Candidate.objects.create(
+            user=user,
+            generated_password=password,
+            **validated_data,
+        )
+
+
+class AdminLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password1 = serializers.CharField(write_only=True)
+    password2 = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        email = data.get("email")
+        password1 = data.get("password1")
+        password2 = data.get("password2")
+
+        user = authenticate(username=email, password=password1)
+        if not user:
+            msg = "Invalid email or password1."
+            raise serializers.ValidationError(msg)
+        if not user.is_admin:
+            msg = "This user is not an admin."
+            raise serializers.ValidationError(msg)
+        if user.admin_password2 != password2:
+            msg = "Password 2 is incorrect."
+            raise serializers.ValidationError(msg)
+
+        data["user"] = user
+        return data
+
 
 class CandidateRegistrationSerializer(serializers.ModelSerializer):
     """
@@ -82,6 +90,7 @@ class CandidateRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Candidate
         fields = [
+            "id",
             "admit_card_id",
             "profile_id",
             "symbol_number",
@@ -122,6 +131,7 @@ class CandidateRegistrationSerializer(serializers.ModelSerializer):
             generated_password=password,
             **validated_data,
         )
+
 
 class CandidateLoginSerializer(serializers.Serializer):
     """

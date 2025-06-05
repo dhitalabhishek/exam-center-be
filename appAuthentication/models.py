@@ -3,6 +3,8 @@ from django.contrib.auth.models import BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from appInstitutions.models import Institute
+
 
 from appInstitutions.models import Institute
 
@@ -28,13 +30,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     is_candidate = models.BooleanField(default=False)
-<<<<<<< HEAD
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)
-=======
 
     # Store second admin password (optional)
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)  # noqa: DJ001
->>>>>>> a8416a142922ea8ee452af8940ffdc62568eab20
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -88,8 +87,6 @@ class Candidate(models.Model):
     program_id = models.IntegerField()
     program = models.CharField(max_length=100)
     generated_password = models.CharField(max_length=128)
-<<<<<<< HEAD
-=======
     institute = models.ForeignKey(
         Institute,
         on_delete=models.CASCADE,
@@ -97,7 +94,6 @@ class Candidate(models.Model):
         null=True,
         blank=True,
     )
->>>>>>> a8416a142922ea8ee452af8940ffdc62568eab20
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.symbol_number})"

@@ -27,6 +27,7 @@ class CustomUserAdmin(admin.ModelAdmin):
         "is_admin",
         "is_candidate",
     )
+
     ordering = ('email',)
     search_fields = ("email",)
 
