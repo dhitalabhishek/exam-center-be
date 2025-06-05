@@ -1,10 +1,16 @@
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.contrib.auth.models import AbstractBaseUser
+from django.contrib.auth.models import BaseUserManager
+from django.contrib.auth.models import PermissionsMixin
 from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+from appInstitutions.models import Institute
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError("The Email field must be set.")
+            msg = "The Email field must be set."
+            raise ValueError(msg)
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -22,9 +28,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     is_candidate = models.BooleanField(default=False)
+<<<<<<< HEAD
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)
+=======
 
-    USERNAME_FIELD = 'email'
+    # Store second admin password (optional)
+    admin_password2 = models.CharField(max_length=128, blank=True, null=True)  # noqa: DJ001
+>>>>>>> a8416a142922ea8ee452af8940ffdc62568eab20
+
+    USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects = CustomUserManager()
@@ -33,7 +45,32 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.email
 
 class Candidate(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='candidate_profile')
+    class VerificationStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        VERIFIED = "verified", _("Verified")
+        REJECTED = "rejected", _("Rejected")
+
+    class ExamStatus(models.TextChoices):
+        ABSENT = "absent", _("Absent")
+        PRESENT = "present", _("Present")
+        COMPLETED = "completed", _("Completed")
+
+    verification_status = models.CharField(
+        max_length=10,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.PENDING,
+    )
+    exam_status = models.CharField(
+        max_length=10,
+        choices=ExamStatus.choices,
+        default=ExamStatus.ABSENT,
+    )
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="candidate_profile",
+    )
     admit_card_id = models.IntegerField()
     profile_id = models.IntegerField()
     symbol_number = models.CharField(max_length=100, unique=True)
@@ -41,7 +78,7 @@ class Candidate(models.Model):
     gender = models.CharField(max_length=10)
     citizenship_no = models.CharField(max_length=100)
     first_name = models.CharField(max_length=100)
-    middle_name = models.CharField(max_length=100, blank=True, null=True)
+    middle_name = models.CharField(max_length=100, blank=True, null=True)  # noqa: DJ001
     last_name = models.CharField(max_length=100)
     dob_nep = models.CharField(max_length=20)
     email = models.EmailField()
@@ -51,6 +88,16 @@ class Candidate(models.Model):
     program_id = models.IntegerField()
     program = models.CharField(max_length=100)
     generated_password = models.CharField(max_length=128)
+<<<<<<< HEAD
+=======
+    institute = models.ForeignKey(
+        Institute,
+        on_delete=models.CASCADE,
+        related_name="candidates",
+        null=True,
+        blank=True,
+    )
+>>>>>>> a8416a142922ea8ee452af8940ffdc62568eab20
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.symbol_number})"

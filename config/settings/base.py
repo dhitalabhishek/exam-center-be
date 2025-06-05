@@ -68,6 +68,8 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # "django.contrib.humanize", # Handy template tags
+    "ckeditor",
+    "jazzmin",
     "django.contrib.admin",
     "django.forms",
 ]
@@ -77,16 +79,16 @@ THIRD_PARTY_APPS = [
     "allauth",
     "allauth.account",
     "allauth.mfa",
-    "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
+    "rest_framework_simplejwt",
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
 ]
 
 LOCAL_APPS = [
-    "backend.users",
+    # "backend.users",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -95,7 +97,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # MIGRATIONS
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#migration-modules
-MIGRATION_MODULES = {"sites": "backend.contrib.sites.migrations"}
+# MIGRATION_MODULES = {"sites": "backend.contrib.sites.migrations"}
 
 # AUTHENTICATION
 # ------------------------------------------------------------------------------
@@ -105,9 +107,9 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
-AUTH_USER_MODEL = "users.User"
+AUTH_USER_MODEL = "appAuthentication.User"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url
-LOGIN_REDIRECT_URL = "users:redirect"
+# LOGIN_REDIRECT_URL = "users:redirect"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-url
 LOGIN_URL = "account_login"
 
@@ -191,7 +193,7 @@ TEMPLATES = [
                 "django.template.context_processors.static",
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
-                "backend.users.context_processors.allauth_settings",
+                # "backend.users.context_processors.allauth_settings",
             ],
         },
     },
@@ -216,7 +218,7 @@ SESSION_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-httponly
 CSRF_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#x-frame-options
-X_FRAME_OPTIONS = "DENY"
+X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # EMAIL
 # ------------------------------------------------------------------------------
@@ -261,6 +263,13 @@ LOGGING = {
         },
     },
     "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "appAuthentication.tasks": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": True,
+        },
+    },
 }
 
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
@@ -294,7 +303,7 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 5 * 60
+CELERY_TASK_TIME_LIMIT = 10 * 60
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
 CELERY_TASK_SOFT_TIME_LIMIT = 60
@@ -315,14 +324,16 @@ ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+
+
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_ADAPTER = "backend.users.adapters.AccountAdapter"
+# ACCOUNT_ADAPTER = "backend.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
-ACCOUNT_FORMS = {"signup": "backend.users.forms.UserSignupForm"}
+# ACCOUNT_FORMS = {"signup": "backend.users.forms.UserSignupForm"}
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_ADAPTER = "backend.users.adapters.SocialAccountAdapter"
+# SOCIALACCOUNT_ADAPTER = "backend.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_FORMS = {"signup": "backend.users.forms.UserSocialSignupForm"}
+# SOCIALACCOUNT_FORMS = {"signup": "backend.users.forms.UserSocialSignupForm"}
 # django-compressor
 # ------------------------------------------------------------------------------
 # https://django-compressor.readthedocs.io/en/latest/quickstart/#installation
@@ -333,6 +344,7 @@ STATICFILES_FINDERS += ["compressor.finders.CompressorFinder"]
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
@@ -356,10 +368,25 @@ SPECTACULAR_SETTINGS = {
 # ------------------------------------------------------------------------------
 
 INSTALLED_APPS += [
-    "appTest",
+    "appCore",
+    "appAuthentication",
+    "appInstitutions",
+    "appExam",
 ]
 
-
-INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]
+INSTALLED_APPS = [
+    "django_prometheus",
+    *INSTALLED_APPS,
+]
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
 MIDDLEWARE = [*MIDDLEWARE, "django_prometheus.middleware.PrometheusAfterMiddleware"]
+
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "simplex",
+}
+
+JAZZMIN_SETTINGS = {
+    "hide_apps": ["account", "authtoken", "mfa", "sites"],
+    "show_ui_builder": True,
+}

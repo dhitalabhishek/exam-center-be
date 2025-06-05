@@ -1,0 +1,32 @@
+name: Deploy to Ubuntu
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+
+          # 1) Write and sanitize secrets (strip any CR characters)
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # 2) Debug: ensure it really starts/ends with the correct PEM lines
+          head -n 1 ~/.ssh/id_rsa | sed 's/.*/[BEGIN LINE: & ]/'
+          tail -n 1 ~/.ssh/id_rsa | sed 's/.*/[  END LINE: & ]/'
+
+          # 3) Add server to known_hosts (avoid interactive prompt)
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run deploy script on server
+        run: ssh -i ~/.ssh/id_rsa ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "/home/deploy/deploy.sh"
