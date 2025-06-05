@@ -17,7 +17,7 @@ class AdminWizardView(TemplateView):
         ("appInstitutions.Program", "Program Configuration"),
         ("appExam.Exam", "Exam Setup"),
         ("appExam.ExamSession", "Exam Session"),
-        ("appExam_app.Question", "Question Management"),
+        ("appExam.Question", "Question Management"),
     ]
 
     def get_context_data(self, **kwargs):
