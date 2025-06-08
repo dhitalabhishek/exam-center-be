@@ -20,6 +20,7 @@ from config.settings.local import SECRET_KEY
 
 User = get_user_model()
 
+
 class ExamConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Extract token from query string
@@ -39,6 +40,7 @@ class ExamConsumer(AsyncWebsocketConsumer):
             # You can get user id from token if you decode it manually
             # For now, let's decode manually:
             from rest_framework_simplejwt.backends import TokenBackend
+
             token_backend = TokenBackend(algorithm="HS256", signing_key=SECRET_KEY)
             valid_data = token_backend.decode(token, verify=True)
             user_id = valid_data["user_id"]
@@ -73,8 +75,10 @@ class ExamConsumer(AsyncWebsocketConsumer):
 
             elif action == "save_answer":
                 question_id = data.get("question_id")
-                answer_id = data.get("answer_id")
-                response = await self.save_answer(question_id, answer_id)
+                answer_letter = data.get(
+                    "selected_answer",
+                )  # Changed from answer_id to selected_answer (letter)
+                response = await self.save_answer(question_id, answer_letter)
                 await self.send(text_data=json.dumps(response))
 
             elif action == "get_exam_session":
@@ -88,7 +92,9 @@ class ExamConsumer(AsyncWebsocketConsumer):
             elif action == "start_timer":
                 # Start the time remaining loop
                 if not hasattr(self, "time_task") or self.time_task.done():
-                    self.time_task = asyncio.create_task(self.send_time_remaining_loop())
+                    self.time_task = asyncio.create_task(
+                        self.send_time_remaining_loop(),
+                    )
 
             elif action == "stop_timer":
                 # Stop the time remaining loop
@@ -197,16 +203,21 @@ class ExamConsumer(AsyncWebsocketConsumer):
         except Candidate.DoesNotExist:
             return {"error": "Candidate profile not found", "status": 404}
         except StudentExamEnrollment.DoesNotExist:
-            return {"error": "No exam enrollment found for this candidate", "status": 404}
+            return {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            }
         except Exception as e:
             return {"error": str(e), "status": 500}
 
     @database_sync_to_async
     def get_paginated_question(self, page):
-        """Get paginated question with student's previous answer"""
+        """Get paginated question matching the expected payload structure"""
         try:
             candidate = Candidate.objects.get(user=self.user)
-            enrollment = StudentExamEnrollment.objects.select_related("session").get(candidate=candidate)
+            enrollment = StudentExamEnrollment.objects.select_related("session").get(
+                candidate=candidate,
+            )
 
             question_order = enrollment.question_order
             answer_order = enrollment.answer_order
@@ -229,56 +240,65 @@ class ExamConsumer(AsyncWebsocketConsumer):
             question_id = paginator.get_page(page).object_list[0]
             question = Question.objects.get(id=question_id)
 
+            # Get randomized answer order for this question
             randomized_answer_ids = answer_order.get(str(question_id), [])
 
+            # Fetch answers in the randomized order with answer letters
             answers_data = []
-            for answer_id in randomized_answer_ids:
+            answer_letters = ["a", "b", "c", "d"]  # Standard answer numbering
+
+            for index, answer_id in enumerate(randomized_answer_ids):
                 try:
                     answer = Answer.objects.get(id=answer_id)
-                    answers_data.append({
-                        "id": answer.id,
-                        "text": answer.text,
-                    })
+                    answers_data.append(
+                        {
+                            "options": answer.text,
+                            "answer_number": answer_letters[index]
+                            if index < len(answer_letters)
+                            else str(index + 1),
+                        },
+                    )
                 except Answer.DoesNotExist:
                     continue
 
-            # Get student's previous answer for this question (if any)
+            # Check if student has already answered this question
             student_answer = None
+            is_answered = False
+
             try:
                 student_answer_obj = StudentAnswer.objects.get(
-                    enrollment=enrollment,
-                    question=question,
+                    enrollment=enrollment, question=question,
                 )
-                student_answer = {
-                    "selected_answer_id": student_answer_obj.selected_answer.id if student_answer_obj.selected_answer else None,
-                    "is_answered": student_answer_obj.selected_answer is not None,
-                }
+                if student_answer_obj.selected_answer:
+                    # Find which answer letter corresponds to the selected answer
+                    selected_answer_id = student_answer_obj.selected_answer.id
+                    # Find the position of this answer in the randomized order
+                    for index, answer_id in enumerate(randomized_answer_ids):
+                        if answer_id == selected_answer_id:
+                            student_answer = (
+                                answer_letters[index]
+                                if index < len(answer_letters)
+                                else str(index + 1)
+                            )
+                            break
+                    is_answered = True
             except StudentAnswer.DoesNotExist:
-                student_answer = {
-                    "selected_answer_id": None,
-                    "is_answered": False,
-                }
+                pass
+
+            # Build the response data matching the expected payload structure
+            question_data = {
+                "id": question.id,
+                "shift_plan_program_id": enrollment.session.exam.program.id,
+                "question": question.text,
+                "answers": answers_data,
+                "student_answer": student_answer,
+                "is_answered": is_answered,
+            }
 
             return {
-                "data": {
-                    "question": {
-                        "id": question.id,
-                        "text": question.text,
-                        "answers": answers_data,
-                        "student_answer": student_answer,  # Added student answer info
-                    },
-                    "pagination": {
-                        "current_page": page,
-                        "page_size": page_size,
-                        "total_pages": paginator.num_pages,
-                        "total_questions": len(question_order),
-                        "has_next": paginator.page(page).has_next(),
-                        "has_previous": paginator.page(page).has_previous(),
-                        "next_page": page + 1 if paginator.page(page).has_next() else None,
-                        "previous_page": page - 1 if paginator.page(page).has_previous() else None,
-                    },
-                },
-                "message": "Question retrieved successfully",
+                "data": question_data,
+                "message": None,
+                "error": None,
                 "status": 200,
             }
 
@@ -292,8 +312,8 @@ class ExamConsumer(AsyncWebsocketConsumer):
             return {"error": str(e), "status": 500}
 
     @database_sync_to_async
-    def save_answer(self, question_id, answer_id):
-        """Save student answer with proper validation"""
+    def save_answer(self, question_id, answer_letter):
+        """Save student answer using answer letter (a, b, c, d)"""
         try:
             candidate = Candidate.objects.get(user=self.user)
             enrollment = StudentExamEnrollment.objects.select_related("session").get(
@@ -315,26 +335,37 @@ class ExamConsumer(AsyncWebsocketConsumer):
                     "status": 404,
                 }
 
-            # Validate the answer if provided
+            # Convert answer letter to Answer object if provided
             selected_answer = None
-            if answer_id:
-                try:
-                    selected_answer = Answer.objects.get(
-                        id=answer_id,
-                        question=question,
-                    )
-                except Answer.DoesNotExist:
+            if answer_letter:
+                # Get the randomized answer order for this question
+                answer_order = enrollment.answer_order
+                randomized_answer_ids = answer_order.get(str(question_id), [])
+
+                if not randomized_answer_ids:
                     return {
-                        "error": "Answer not found or doesn't belong to the specified question",
-                        "status": 404,
+                        "error": "Answer order not found for this question",
+                        "status": 400,
+                    }
+
+                # Convert answer letter to answer ID
+                answer_letters = ["a", "b", "c", "d"]
+                try:
+                    answer_index = answer_letters.index(answer_letter.lower())
+                    selected_answer_id = randomized_answer_ids[answer_index]
+                    selected_answer = Answer.objects.get(id=selected_answer_id)
+                except (ValueError, IndexError, Answer.DoesNotExist):
+                    return {
+                        "error": "Invalid answer selection",
+                        "status": 400,
                     }
 
             # Create or update the student answer
             student_answer, created = StudentAnswer.objects.update_or_create(
-                enrollment=enrollment,  # Fixed: use enrollment instead of candidate
-                question=question,      # Fixed: use question object instead of question_id
+                enrollment=enrollment,
+                question=question,
                 defaults={
-                    "selected_answer": selected_answer,  # Fixed: use selected_answer instead of answer_id
+                    "selected_answer": selected_answer,
                 },
             )
 
@@ -349,7 +380,7 @@ class ExamConsumer(AsyncWebsocketConsumer):
             return {
                 "data": {
                     "question_id": question.id,
-                    "selected_answer_id": selected_answer.id if selected_answer else None,
+                    "selected_answer": answer_letter,
                     "is_answered": selected_answer is not None,
                     "created": created,
                 },
@@ -361,13 +392,16 @@ class ExamConsumer(AsyncWebsocketConsumer):
         except Candidate.DoesNotExist:
             return {"error": "Candidate profile not found", "status": 404}
         except StudentExamEnrollment.DoesNotExist:
-            return {"error": "No exam enrollment found for this candidate", "status": 404}
+            return {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            }
         except Exception as e:
             return {"error": str(e), "status": 500}
 
     @database_sync_to_async
     def get_answers_summary(self):
-        """Get summary of all student answers - equivalent to get_student_answers_summary_view"""
+        """Get summary of all student answers with answer letters"""
         try:
             candidate = Candidate.objects.get(user=self.user)
             enrollment = StudentExamEnrollment.objects.select_related("session").get(
@@ -381,30 +415,48 @@ class ExamConsumer(AsyncWebsocketConsumer):
 
             # Get the randomized question order for this candidate
             question_order = enrollment.question_order
+            answer_order = enrollment.answer_order
             total_questions = len(question_order)
 
             # Build summary data
             answers_summary = []
             answered_count = 0
+            answer_letters = ["a", "b", "c", "d"]
 
             for question_id in question_order:
                 question_answered = False
-                selected_answer_id = None
+                selected_answer_letter = None
 
                 # Find if this question has been answered
                 for student_answer in student_answers:
                     if student_answer.question.id == question_id:
                         if student_answer.selected_answer:
                             question_answered = True
-                            selected_answer_id = student_answer.selected_answer.id
                             answered_count += 1
+
+                            # Convert answer ID back to letter
+                            randomized_answer_ids = answer_order.get(
+                                str(question_id), [],
+                            )
+                            selected_answer_id = student_answer.selected_answer.id
+
+                            for index, answer_id in enumerate(randomized_answer_ids):
+                                if answer_id == selected_answer_id:
+                                    selected_answer_letter = (
+                                        answer_letters[index]
+                                        if index < len(answer_letters)
+                                        else str(index + 1)
+                                    )
+                                    break
                         break
 
-                answers_summary.append({
-                    "question_id": question_id,
-                    "is_answered": question_answered,
-                    "selected_answer_id": selected_answer_id,
-                })
+                answers_summary.append(
+                    {
+                        "question_id": question_id,
+                        "is_answered": question_answered,
+                        "selected_answer": selected_answer_letter,
+                    },
+                )
 
             return {
                 "data": {
@@ -412,7 +464,11 @@ class ExamConsumer(AsyncWebsocketConsumer):
                     "total_questions": total_questions,
                     "answered_count": answered_count,
                     "unanswered_count": total_questions - answered_count,
-                    "completion_percentage": round((answered_count / total_questions) * 100, 2) if total_questions > 0 else 0,
+                    "completion_percentage": round(
+                        (answered_count / total_questions) * 100, 2,
+                    )
+                    if total_questions > 0
+                    else 0,
                 },
                 "message": "Student answers summary retrieved successfully",
                 "error": None,
@@ -422,6 +478,9 @@ class ExamConsumer(AsyncWebsocketConsumer):
         except Candidate.DoesNotExist:
             return {"error": "Candidate profile not found", "status": 404}
         except StudentExamEnrollment.DoesNotExist:
-            return {"error": "No exam enrollment found for this candidate", "status": 404}
+            return {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            }
         except Exception as e:
             return {"error": str(e), "status": 500}
