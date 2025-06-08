@@ -15,7 +15,7 @@ CELERY_FLOWER_PASSWORD=debug
 
 # enable debugging
 # ------------------------------------------------------------------------------
-DEBUG=True
+DEBUG=False
 
 
 # minio setup

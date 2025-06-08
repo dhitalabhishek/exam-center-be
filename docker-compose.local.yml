@@ -4,9 +4,8 @@ volumes:
   backend_local_redis_data: {}
   backend_local_minio_data: {}
   backend_local_grafana_data: {}
-  static_volume:
-  media_volume:
-
+  static_volume: {}
+  media_volume: {}
 
 services:
   django: &django
@@ -58,7 +57,7 @@ services:
       - ./.envs/.local/.postgres
 
   redis:
-    image: docker.io/redis:6
+    image: redis:6
     container_name: backend_local_redis
     volumes:
       - backend_local_redis_data:/data
@@ -70,6 +69,8 @@ services:
     depends_on:
       - redis
       - postgres
+    env_file:
+      - ./.envs/.local/.django
     ports: []
     command: /start-celeryworker
 
@@ -80,6 +81,8 @@ services:
     depends_on:
       - redis
       - postgres
+    env_file:
+      - ./.envs/.local/.django
     ports: []
     command: /start-celerybeat
 
@@ -87,6 +90,9 @@ services:
     <<: *django
     image: backend_local_flower
     container_name: backend_local_flower
+    env_file:
+      - ./.envs/.local/.flower
+      - ./.envs/.local/.django
     ports:
       - '5555:5555'
     command: /start-flower
@@ -94,14 +100,13 @@ services:
   minio:
     image: minio/minio:latest
     container_name: backend_local_minio
+    env_file:
+      - ./.envs/.local/.minio
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - backend_local_minio_data:/data
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
     command: server /data --console-address ":9001"
 
   prometheus:
@@ -115,21 +120,16 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: backend_local_grafana
+    env_file:
+      - ./.envs/.local/.grafana
     ports:
       - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_SERVER_ROOT_URL=http://localhost/monitor/
-      - GF_SERVER_SERVE_FROM_SUB_PATH=true
-      - GF_SERVER_DOMAIN=localhost
-      - GF_SERVER_HTTP_PORT=3000
     volumes:
       - backend_local_grafana_data:/var/lib/grafana
 
   node-exporter:
     image: prom/node-exporter:latest
-    container_name: backed_local_node-exporter
+    container_name: backend_local_node_exporter
     restart: unless-stopped
     ports:
       - "9100:9100"
@@ -144,12 +144,14 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
       - "8080:8080"
-    # ───────────────────  Locust  ───────────────────
+
   locust:
     image: locustio/locust:latest
     container_name: backend_local_locust
     depends_on:
       - django
+    env_file:
+      - ./.envs/.local/.locust
     volumes:
       - ./compose/local/locust:/mnt/locust
     working_dir: /mnt/locust
@@ -160,6 +162,3 @@ services:
       - --web-port=8089
     ports:
       - "8089:8089"
-    environment:
-      - LOCUST_USER=debug
-      - LOCUST_PASSWORD=debug
