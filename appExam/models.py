@@ -121,7 +121,7 @@ class Answer(models.Model):
     is_correct = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"Answer to Q#{self.question.id}"
+        return f"Answer to Q#{self.question.id} - {self.text[:50]}"
 
 
 class StudentExamEnrollment(models.Model):

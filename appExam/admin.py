@@ -30,9 +30,11 @@ from .models import ExamSession
 from .models import Hall
 from .models import HallAndStudentAssignment
 from .models import Question
+from .models import StudentAnswer
 from .models import StudentExamEnrollment
 from .tasks import enroll_students_by_symbol_range
 
+admin.site.register(StudentAnswer)
 
 # Custom form for range enrollment
 class EnrollmentRangeForm(Form):
