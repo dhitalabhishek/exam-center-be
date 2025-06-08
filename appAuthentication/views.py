@@ -1,9 +1,11 @@
-# appExam/views.py
-
 import random
 from collections import defaultdict
 
+from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth import login
+from django.shortcuts import redirect
+from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.decorators import permission_classes
@@ -15,9 +17,9 @@ from appExam.models import Answer
 from appExam.models import Question
 from appExam.models import StudentExamEnrollment
 
+from .forms import AdminRegisterForm
+from .forms import DualPasswordAdminLoginForm
 from .models import Candidate
-from .serializers import AdminLoginSerializer
-from .serializers import AdminRegistrationSerializer
 from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 
@@ -32,34 +34,28 @@ def get_tokens_for_user(user):
     }
 
 
-# ------------------------- Admin Registration -------------------------
-@api_view(["POST"])
-@permission_classes([AllowAny])
+
+
 def admin_register_view(request):
-    serializer = AdminRegistrationSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.save()
-        tokens = get_tokens_for_user(user)
-        return Response(
-            {"message": "Admin registered successfully.", "tokens": tokens},
-            status=status.HTTP_201_CREATED,
-        )
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    if request.method == "POST":
+        form = AdminRegisterForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Admin registered successfully. You can now log in.")
+            return redirect("admin:login")
+    else:
+        form = AdminRegisterForm()
+    return render(request, "custom_admin/register.html", {"form": form})
 
 
-# ------------------------- Admin Login -------------------------
-@api_view(["POST"])
-@permission_classes([AllowAny])
-def admin_login_view(request):
-    serializer = AdminLoginSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.validated_data["user"]
-        tokens = get_tokens_for_user(user)
-        return Response(
-            {"message": "Admin logged in successfully.", "tokens": tokens},
-            status=status.HTTP_200_OK,
-        )
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+def custom_admin_login_view(request):
+    form = DualPasswordAdminLoginForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.cleaned_data["user"]
+        login(request, user)
+        return redirect("admin:index")
+    return render(request, "custom_admin/login.html", {"form": form})
+
 
 
 # ------------------------- Candidate Registration -------------------------

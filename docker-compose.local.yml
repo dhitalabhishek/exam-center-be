@@ -38,6 +38,7 @@ services:
     depends_on:
       - django
     volumes:
+      - ./frontend/dist:/app/frontend:ro
       - static_volume:/app/backend/static:ro
       - media_volume:/app/backend/media:ro
       - ./compose/local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro

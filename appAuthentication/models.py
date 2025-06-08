@@ -3,9 +3,10 @@ from django.contrib.auth.models import BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-
 from appInstitutions.models import Institute
 
+
+from appInstitutions.models import Institute
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -14,8 +15,7 @@ class CustomUserManager(BaseUserManager):
             raise ValueError(msg)
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
-        if password:
-            user.set_password(password)
+        user.set_password(password)
         user.save(using=self._db)
         return user
 
@@ -25,12 +25,12 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_admin", True)
         return self.create_user(email, password, **extra_fields)
 
-
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     is_staff = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     is_candidate = models.BooleanField(default=False)
+    admin_password2 = models.CharField(max_length=128, blank=True, null=True)
 
     # Store second admin password (optional)
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)  # noqa: DJ001
@@ -42,7 +42,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
-
 
 class Candidate(models.Model):
     class VerificationStatus(models.TextChoices):

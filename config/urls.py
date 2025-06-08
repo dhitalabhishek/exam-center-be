@@ -10,9 +10,14 @@ from django.views import defaults as default_views
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 
+from appAuthentication.views import admin_register_view
+from appAuthentication.views import custom_admin_login_view
+
 admin.site.site_header = "Exam Admin"
 admin.site.site_title = "Admin"
 admin.site.index_title = "Dashboard"
+
+
 
 urlpatterns = [
     # Core pages
@@ -23,6 +28,9 @@ urlpatterns = [
         f"{settings.ADMIN_URL}flows/exam-creation/",
         include("appCore.flows.flow_1_handelingExamCreation.flows_urls"),
     ),
+    path("institute/register/", admin_register_view, name="admin_register"),  # noqa: ERA001
+    path("institute/login/", custom_admin_login_view, name="admin_login"),  # noqa: ERA001
+
     path(settings.ADMIN_URL, admin.site.urls),
     # Monitoring
     path("", include("django_prometheus.urls")),

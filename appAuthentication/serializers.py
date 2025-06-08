@@ -33,8 +33,14 @@ class AdminRegistrationSerializer(serializers.Serializer):
         return data
 
     def create(self, validated_data):
+        """
+        Create a User using 'generated_password', then create Candidate.
+        """
+        password = validated_data.pop("generated_password")
+
         user = User.objects.create_user(
             email=validated_data["email"],
+
             password=validated_data["password1"],
             is_admin=True,
             is_staff=True,
@@ -42,6 +48,13 @@ class AdminRegistrationSerializer(serializers.Serializer):
         user.admin_password2 = validated_data["password2"]
         user.save()
         return user
+
+        # Create the Candidate with reference to the User and generated_password
+        return Candidate.objects.create(
+            user=user,
+            generated_password=password,
+            **validated_data,
+        )
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -77,6 +90,7 @@ class CandidateRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Candidate
         fields = [
+            "id",
             "admit_card_id",
             "profile_id",
             "symbol_number",

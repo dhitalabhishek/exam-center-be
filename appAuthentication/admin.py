@@ -27,7 +27,15 @@ class CustomUserAdmin(admin.ModelAdmin):
         "is_admin",
         "is_candidate",
     )
+
+    ordering = ('email',)
     search_fields = ("email",)
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:
+            return self.add_form
+        return super().get_form(request, obj, **kwargs)
+
 
 
 admin.site.register(User, CustomUserAdmin)
