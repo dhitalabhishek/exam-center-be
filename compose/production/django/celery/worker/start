@@ -1,8 +1,19 @@
 #!/bin/bash
 
 set -o errexit
-set -o pipefail
 set -o nounset
+set -o pipefail
 
+# Set concurrency based on CPU cores
+CONCURRENCY="${CELERY_CONCURRENCY:-4}"
+MAX_TASKS_PER_CHILD="${CELERY_MAX_TASKS_PER_CHILD:-100}"
+PREFETCH="${CELERY_PREFETCH:-1}"
+LOGLEVEL="${CELERY_LOGLEVEL:-INFO}"
 
-exec celery -A config.celery_app worker -l INFO
+exec celery -A config.celery_app worker \
+  --loglevel="$LOGLEVEL" \
+  --concurrency="$CONCURRENCY" \
+  --max-tasks-per-child="$MAX_TASKS_PER_CHILD" \
+  --prefetch-multiplier="$PREFETCH" \
+  --hostname=worker@%h
+

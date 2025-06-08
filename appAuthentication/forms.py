@@ -1,15 +1,17 @@
 from django import forms
+
 from .models import User
 
+
 class AdminRegisterForm(forms.ModelForm):
-    password1 = forms.CharField(label='Password 1', widget=forms.PasswordInput)
-    confirm_password1 = forms.CharField(label='Confirm Password 1', widget=forms.PasswordInput)
-    password2 = forms.CharField(label='Password 2', widget=forms.PasswordInput)
-    confirm_password2 = forms.CharField(label='Confirm Password 2', widget=forms.PasswordInput)
+    password1 = forms.CharField(label="Password 1", widget=forms.PasswordInput)
+    confirm_password1 = forms.CharField(label="Confirm Password 1", widget=forms.PasswordInput)
+    password2 = forms.CharField(label="Password 2", widget=forms.PasswordInput)
+    confirm_password2 = forms.CharField(label="Confirm Password 2", widget=forms.PasswordInput)
 
     class Meta:
         model = User
-        fields = ('email',)
+        fields = ("email",)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -49,5 +51,5 @@ class DualPasswordAdminLoginForm(forms.Form):
         if user.admin_password2 != password2:
             raise forms.ValidationError("Second password is incorrect.")
 
-        cleaned_data['user'] = user
+        cleaned_data["user"] = user
         return cleaned_data

@@ -1,30 +1,28 @@
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.auth import login
-from rest_framework.decorators import api_view, permission_classes
+import random
+from collections import defaultdict
 
+from django.contrib import messages
+from django.contrib.auth import get_user_model
+from django.contrib.auth import login
+from django.shortcuts import redirect
+from django.shortcuts import render
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.decorators import permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from appExam.models import Answer
 from appExam.models import Question
 from appExam.models import StudentExamEnrollment
 
+from .forms import AdminRegisterForm
+from .forms import DualPasswordAdminLoginForm
 from .models import Candidate
-from .serializers import AdminLoginSerializer
-from .serializers import AdminRegistrationSerializer
 from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 
-from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
-from .forms import AdminRegisterForm, DualPasswordAdminLoginForm
-
-
-
-import random
-from collections import defaultdict
-
-from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
@@ -39,24 +37,24 @@ def get_tokens_for_user(user):
 
 
 def admin_register_view(request):
-    if request.method == 'POST':
+    if request.method == "POST":
         form = AdminRegisterForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Admin registered successfully. You can now log in.')
-            return redirect('customadmin:login')
+            messages.success(request, "Admin registered successfully. You can now log in.")
+            return redirect("admin:login")
     else:
         form = AdminRegisterForm()
-    return render(request, 'custom_admin/register.html', {'form': form})
+    return render(request, "custom_admin/register.html", {"form": form})
 
 
 def custom_admin_login_view(request):
     form = DualPasswordAdminLoginForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        user = form.cleaned_data['user']
+    if request.method == "POST" and form.is_valid():
+        user = form.cleaned_data["user"]
         login(request, user)
-        return redirect('admin:index')
-    return render(request, 'custom_admin/login.html', {'form': form})
+        return redirect("admin:index")
+    return render(request, "custom_admin/login.html", {"form": form})
 
 
 
