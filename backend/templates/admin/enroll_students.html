@@ -16,246 +16,363 @@
 {% endblock %}
 
 {% block content %}
-  <div id="content-main">
-    <div class="module aligned">
-      <h1>Enroll Students by Symbol Number Range</h1>
-
-      <div class="form-row session-details">
-        <h3>Session Details</h3>
-        <p>
-          <strong>Session:</strong> {{ session }}
-        </p>
-        <p>
-          <strong>Program:</strong> {{ session.exam.program.name }}
-        </p>
-        <p>
-          <strong>Subject:</strong> {{ session.exam.subject.name|default:'All Subjects' }}
-        </p>
-        <p>
-          <strong>Start Time:</strong> {{ session.start_time }}
-        </p>
-        <p>
-          <strong>Status:</strong> {{ session.get_status_display }}
-        </p>
+  <div id="content-main" class="col-12">
+    <div class="card card-primary card-outline">
+      <div class="card-header">
+        <h3 class="card-title">
+          <i class="fas fa-user-graduate"></i>
+          Enroll Students by Symbol Number Range
+        </h3>
       </div>
 
-      <form method="post" novalidate>
-        {% csrf_token %}
-        <fieldset class="module aligned">
-          <h2>Hall Assignment</h2>
-          <div class="form-row field-hall_assignment">
-            <div>
-              <label for="id_hall_assignment" class="required">Select Hall:</label>
-              {{ form.hall_assignment }}
-              {% if form.hall_assignment.help_text %}
-                <div class="help">{{ form.hall_assignment.help_text }}</div>
-              {% endif %}
-              {% if form.hall_assignment.errors %}
-                <ul class="errorlist">
-                  {% for error in form.hall_assignment.errors %}
-                    <li>{{ error }}</li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </div>
+      <div class="card-body">
+        <!-- Session Details Card -->
+        <div class="card card-info">
+          <div class="card-header">
+            <h3 class="card-title">
+              <i class="fas fa-info-circle"></i>
+              Session Details
+            </h3>
           </div>
+          <div class="card-body">
+            <dl class="row">
+              <dt class="col-sm-3">Session:</dt>
+              <dd class="col-sm-9">{{ session }}</dd>
 
-          <h2>Symbol Number Range</h2>
-          <div class="form-row field-range_string">
-            <div>
-              <label for="id_range_string" class="required">Enter Range:</label>
-              {{ form.range_string }}
-              {% if form.range_string.help_text %}
-                <div class="help">{{ form.range_string.help_text }}</div>
-              {% endif %}
-              {% if form.range_string.errors %}
-                <ul class="errorlist">
-                  {% for error in form.range_string.errors %}
-                    <li>{{ error }}</li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </div>
-          </div>
-        </fieldset>
+              <dt class="col-sm-3">Program:</dt>
+              <dd class="col-sm-9">{{ session.exam.program.name }}</dd>
 
-        <div class="module range-info">
-          <h3>Range Format Examples</h3>
-          <div class="range-columns">
-            <div>
-              <h4>Valid Formats:</h4>
-              <ul>
-                <li>
-                  <code>13-A1-PT - 14-C2-GM</code> (Range across years)
-                </li>
-                <li>
-                  <code>13-A1-PH - 13-B5-GM</code> (Same year range)
-                </li>
-                <li>
-                  <code>17-A6-12</code> (Single symbol)
-                </li>
-                <li>
-                  <code>13-S1-OP - 13-S1-PH</code> (Same section range)
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4>How it Works:</h4>
-              <ol>
-                <li>
-                  Find candidates in program: <strong>{{ session.exam.program.name }}</strong>
-                </li>
-                <li>Check symbol numbers within your range</li>
-                <li>Create enrollments in selected hall</li>
-                <li>Skip already enrolled candidates</li>
-              </ol>
-            </div>
-          </div>
+              <dt class="col-sm-3">Subject:</dt>
+              <dd class="col-sm-9">{{ session.exam.subject.name|default:'All Subjects' }}</dd>
 
-          <div class="note">
-            <strong>Note:</strong> This process runs in the background. You’ll receive a confirmation once it starts. Results will be available shortly after.
+              <dt class="col-sm-3">Start Time:</dt>
+              <dd class="col-sm-9">{{ session.start_time }}</dd>
+
+              <dt class="col-sm-3">Status:</dt>
+              <dd class="col-sm-9">
+                <span class="badge badge-{% if session.status == 'scheduled' %}
+                    info
+                  {% elif session.status == 'completed' %}
+                    success
+                  {% else %}
+                    warning
+                  {% endif %}">
+                  {{ session.get_status_display }}
+                </span>
+              </dd>
+            </dl>
           </div>
         </div>
 
-        <div class="submit-row">
-          <input type="submit" value="Start Enrollment Process" class="default submit-button" />
-          <a href="{% url 'admin:appExam_examsession_change' session.pk %}" class="button cancel-link">Cancel</a>
-        </div>
-      </form>
+        <form method="post" novalidate class="mt-4">
+          {% csrf_token %}
 
-      {% if session.hall_assignments.all %}
-        <div class="module hall-assignments">
-          <h2>Current Hall Assignments</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Hall</th>
-                <th>Current Range</th>
-                <th>Enrolled Students</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for assignment in session.hall_assignments.all %}
-                <tr>
-                  <td>{{ assignment.hall.name }}</td>
-                  <td>
-                    {% if assignment.roll_number_range %}
-                      <code>{{ assignment.roll_number_range }}</code>
-                    {% else %}
-                      <em>No range set</em>
-                    {% endif %}
-                  </td>
-                  <td class="center">
-                    <strong>{{ assignment.studentexamenrollment_set.count }}</strong>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% endif %}
+          <!-- Hall Assignment Card -->
+          <div class="card card-secondary">
+            <div class="card-header">
+              <h3 class="card-title">
+                <i class="fas fa-door-open"></i>
+                Hall Assignment
+              </h3>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="id_hall_assignment" class="required">
+                  <i class="fas fa-map-marker-alt"></i>
+                  Select Hall:
+                </label>
+                {{ form.hall_assignment }}
+                {% if form.hall_assignment.help_text %}
+                  <small class="form-text text-muted">{{ form.hall_assignment.help_text }}</small>
+                {% endif %}
+                {% if form.hall_assignment.errors %}
+                  <div class="alert alert-danger alert-dismissible mt-2">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                    {% for error in form.hall_assignment.errors %}
+                      <p class="mb-0">
+                        <i class="icon fas fa-exclamation-circle"></i> {{ error }}
+                      </p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Symbol Range Card -->
+          <div class="card card-secondary mt-4">
+            <div class="card-header">
+              <h3 class="card-title">
+                <i class="fas fa-sliders-h"></i>
+                Symbol Number Range
+              </h3>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="id_range_string" class="required">
+                  <i class="fas fa-list-ol"></i>
+                  Enter Range:
+                </label>
+                {{ form.range_string }}
+                {% if form.range_string.help_text %}
+                  <small class="form-text text-muted">{{ form.range_string.help_text }}</small>
+                {% endif %}
+                {% if form.range_string.errors %}
+                  <div class="alert alert-danger alert-dismissible mt-2">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                    {% for error in form.range_string.errors %}
+                      <p class="mb-0">
+                        <i class="icon fas fa-exclamation-circle"></i> {{ error }}
+                      </p>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Range Info Card -->
+          <div class="card card-default mt-4">
+            <div class="card-header">
+              <h3 class="card-title">
+                <i class="fas fa-lightbulb"></i>
+                Range Format Examples
+              </h3>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="card">
+                    <div class="card-header bg-gradient-info">
+                      <h3 class="card-title">Valid Formats</h3>
+                    </div>
+                    <div class="card-body">
+                      <ul class="list-group">
+                        <li class="list-group-item">
+                          <i class="fas fa-arrow-right text-success mr-2"></i>
+                          <code>13-A1-PT - 14-C2-GM</code>
+                          <span class="text-muted">(Range across years)</span>
+                        </li>
+                        <li class="list-group-item">
+                          <i class="fas fa-arrow-right text-success mr-2"></i>
+                          <code>13-A1-PH - 13-B5-GM</code>
+                          <span class="text-muted">(Same year range)</span>
+                        </li>
+                        <li class="list-group-item">
+                          <i class="fas fa-arrow-right text-success mr-2"></i>
+                          <code>17-A6-12</code>
+                          <span class="text-muted">(Single symbol)</span>
+                        </li>
+                        <li class="list-group-item">
+                          <i class="fas fa-arrow-right text-success mr-2"></i>
+                          <code>13-S1-OP - 13-S1-PH</code>
+                          <span class="text-muted">(Same section range)</span>
+                        </li>
+                        <li class="list-group-item">
+                          <i class="fas fa-arrow-right text-success mr-2"></i>
+                          <code>MG12XX10 - MG12XX20, MG12XX21, MG12XX30 - MG12XX40</code>
+                          <span class="text-muted">(Multiple ranges)</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card">
+                    <div class="card-header bg-gradient-purple">
+                      <h3 class="card-title">How It Works</h3>
+                    </div>
+                    <div class="card-body">
+                      <ol class="pl-3">
+                        <li class="mb-2">
+                          <strong>Find candidates</strong> in program:
+                          <span class="badge badge-info">{{ session.exam.program.name }}</span>
+                        </li>
+                        <li class="mb-2">
+                          <strong>Check symbol numbers</strong> within your specified range(s)
+                        </li>
+                        <li class="mb-2">
+                          <strong>Create enrollments</strong> in selected hall
+                        </li>
+                        <li class="mb-2">
+                          <strong>Skip already enrolled</strong> candidates
+                        </li>
+                        <li class="mb-2">
+                          Process runs <strong>in background</strong> - you'll get notification
+                        </li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="alert alert-warning mt-3">
+                <h5 class="alert-heading">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  Important Note
+                </h5>
+                <p class="mb-0">This process runs in the background. You'll receive a notification once it starts. Results will be available in the hall assignment section shortly after completion.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Form Buttons -->
+          <div class="mt-4 d-flex justify-content-between">
+            <a href="{% url 'admin:appExam_examsession_change' session.pk %}" class="btn btn-danger">
+              <i class="fas fa-times-circle"></i>
+              Cancel
+            </a>
+            <button type="submit" class="btn btn-success">
+              <i class="fas fa-play-circle"></i>
+              Start Enrollment Process
+            </button>
+          </div>
+        </form>
+
+        <!-- Hall Assignments Table -->
+        {% if session.hall_assignments.all %}
+          <div class="card card-primary mt-4">
+            <div class="card-header">
+              <h3 class="card-title">
+                <i class="fas fa-clipboard-list"></i>
+                Current Hall Assignments
+              </h3>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                  <thead class="thead-dark">
+                    <tr>
+                      <th>
+                        <i class="fas fa-door-open"></i> Hall
+                      </th>
+                      <th>
+                        <i class="fas fa-sliders-h"></i> Range
+                      </th>
+                      <th class="text-center">
+                        <i class="fas fa-users"></i> Enrolled Students
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for assignment in session.hall_assignments.all %}
+                      <tr>
+                        <td>
+                          <strong>{{ assignment.hall.name }}</strong><br />
+                          <small class="text-muted">{{ assignment.hall.location }}</small>
+                        </td>
+                        <td>
+                          {% if assignment.roll_number_range %}
+                            <code class="d-block mb-1">{{ assignment.roll_number_range }}</code>
+                            <small class="text-muted">{% widthratio assignment.studentexamenrollment_set.count assignment.hall.capacity 100 %}% filled</small>
+                          {% else %}
+                            <em>No range set</em>
+                          {% endif %}
+                        </td>
+                        <td class="text-center">
+                          <span class="badge badge-pill bg-{% if assignment.studentexamenrollment_set.count == 0 %}
+                              secondary
+                            {% else %}
+                              primary
+                            {% endif %}"
+                            style="font-size: 1.1em;">
+                            {{ assignment.studentexamenrollment_set.count }}
+                          </span>
+                          <div class="progress mt-1" style="height: 5px;">
+                            <div class="progress-bar bg-{% if assignment.studentexamenrollment_set.count == 0 %}
+                                secondary
+                              {% else %}
+                                info
+                              {% endif %}"
+                              role="progressbar"
+                              style="width: {% widthratio assignment.studentexamenrollment_set.count assignment.hall.capacity 100 %}%"></div>
+                          </div>
+                          <small>of {{ assignment.hall.capacity }}</small>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+      </div>
     </div>
   </div>
+{% endblock %}
+
+{% block extrajs %}
+  <script>
+    // Add modern input styling
+    document.addEventListener('DOMContentLoaded', function () {
+      // Add form-control classes to inputs
+      const hallSelect = document.getElementById('id_hall_assignment')
+      const rangeInput = document.getElementById('id_range_string')
+    
+      if (hallSelect) hallSelect.classList.add('form-control', 'form-control-lg')
+      if (rangeInput) {
+        rangeInput.classList.add('form-control', 'form-control-lg')
+        rangeInput.placeholder = 'e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH, 15-C1-GM - 15-C3-GM'
+      }
+    
+      // Add help text for inputs
+      if (!rangeInput.previousElementSibling.querySelector('.form-text')) {
+        const helpText = document.createElement('small')
+        helpText.className = 'form-text text-muted'
+        helpText.innerHTML = 'Enter comma-separated ranges or individual symbols'
+        rangeInput.parentNode.insertBefore(helpText, rangeInput.nextSibling)
+      }
+    })
+  </script>
 
   <style>
-    .module h1 {
-      color: #2c3e50;
-      font-size: 24px;
-      margin-bottom: 20px;
+    .card-header h3.card-title {
+      font-weight: 600;
+      font-size: 1.25rem;
     }
     
-    .module h2 {
-      color: #34495e;
-      font-size: 18px;
-      margin-top: 30px;
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 6px;
+    .list-group-item {
+      border: none;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      padding: 0.75rem 1.25rem;
     }
     
-    .module h3 {
-      color: #2d3436;
-      font-size: 16px;
-      margin-top: 20px;
+    .table thead th {
+      font-weight: 600;
     }
     
-    .form-row.session-details {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-      font-size: 14px;
+    .table-hover tbody tr:hover {
+      background-color: rgba(0, 0, 0, 0.025);
     }
     
-    .range-info {
-      background: #eaf4fb;
-      padding: 20px;
-      border-radius: 6px;
-      margin-top: 30px;
+    .progress {
+      max-width: 150px;
+      margin: 0 auto;
     }
     
-    .range-columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
+    .form-control-lg {
+      padding: 0.75rem 1rem;
+      font-size: 1.05rem;
     }
     
-    .note {
-      background: #fff8e1;
-      padding: 12px;
-      border-left: 5px solid #ffc107;
-      margin-top: 20px;
-      font-size: 14px;
-    }
-    
-    code {
-      background: #f4f4f4;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-family: monospace;
-    }
-    
-    .errorlist {
-      color: #b94a48;
-      margin-top: 5px;
-    }
-    
-    .errorlist li {
-      list-style: none;
-    }
-    
-    .submit-button {
-      background: #28a745;
+    .bg-gradient-info {
+      background: linear-gradient(to right, #17a2b8, #2ab7d5);
       color: white;
-      font-weight: bold;
     }
     
-    .cancel-link {
-      margin-left: 10px;
+    .bg-gradient-purple {
+      background: linear-gradient(to right, #6f42c1, #9a6dd7);
+      color: white;
     }
     
-    .hall-assignments {
-      margin-top: 30px;
+    .alert-warning {
+      border-left: 4px solid #ffc107;
     }
     
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    
-    .table th,
-    .table td {
-      padding: 10px;
-      border: 1px solid #ddd;
-    }
-    
-    .table th {
-      background: #f1f1f1;
-      text-align: left;
-    }
-    
-    .table .center {
-      text-align: center;
+    .badge-pill {
+      min-width: 40px;
+      padding: 0.5em 0.75em;
     }
   </style>
 {% endblock %}

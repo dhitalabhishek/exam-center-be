@@ -92,7 +92,12 @@ class HallAndStudentAssignment(models.Model):
     )
 
     def __str__(self):
-        return f"{self.hall.name} [{self.roll_number_range}]"
+        exam = self.session.exam
+        exam_name = f"{exam.program.name}"
+        if exam.subject:
+            exam_name += f" - {exam.subject.name}"
+        date_str = self.session.start_time.strftime("%Y-%m-%d %H:%M")
+        return f"{exam_name} on {date_str} at {self.hall.name}"
 
 
 class Question(models.Model):

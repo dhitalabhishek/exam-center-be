@@ -90,7 +90,7 @@ def enroll_students_view(request, session_id):
         "form": form,
         "session": session,
         "title": f"Enroll Students for {session}",
-        "opts": ExamSession._meta,
+        "opts": ExamSession._meta,  # noqa: SLF001
         "has_change_permission": True,
     }
 
