@@ -40,6 +40,15 @@ def get_exam_session_view(request):
         session = enrollment.session
         exam = session.exam
 
+        if session.status != "ongoing":
+            return Response(
+                {
+                    "error": "Exam session has not started yet.",
+                    "status": 422,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
         # Count total questions for this session
         total_questions = Question.objects.filter(session=session).count()
 
@@ -113,7 +122,7 @@ def get_exam_session_view(request):
 # ------------------------- Get Paginated Questions -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_paginated_questions_view(request):
+def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
     """
     Get paginated questions for the authenticated candidate's exam session.
     Questions and answers are returned in the randomized order specific to this candidate.
@@ -130,6 +139,15 @@ def get_paginated_questions_view(request):
         enrollment = StudentExamEnrollment.objects.select_related("session").get(
             candidate=candidate,
         )
+
+        if enrollment.session.status != "ongoing":
+            return Response(
+                {
+                    "error": "Exam session has not started yet.",
+                    "status": 422,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         # Get pagination parameters - force page_size to 1
         page = int(request.GET.get("page", 1))
@@ -195,7 +213,8 @@ def get_paginated_questions_view(request):
 
             try:
                 student_answer_obj = StudentAnswer.objects.get(
-                    enrollment=enrollment, question=question,
+                    enrollment=enrollment,
+                    question=question,
                 )
                 if student_answer_obj.selected_answer:
                     # Find which answer letter corresponds to the selected answer
