@@ -9,7 +9,7 @@ REDIS_URL=redis://redis:6379/0
 
 # enable debugging
 # ------------------------------------------------------------------------------
-DEBUG=False
+DEBUG=True
 
 #fow hwt authencation
 JWT_SIGNING_KEY=5M)4aGB68v^rDd%VZ@M&pxxk#u1JazKdyhFg&ZxLr49E89B&29x6r#E$e9J!

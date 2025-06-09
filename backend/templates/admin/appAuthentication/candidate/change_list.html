@@ -1,11 +1,11 @@
 {% extends 'admin/change_list.html' %}
 {% load i18n admin_urls static %}
 
-{% block object-tools-items %}
+{% block object - tools - items %}
 {{ block.super }}
 {% if has_add_permission %}
-  <li>
-    <a href="#" onclick="showImportDialog()" class="addlink">Import Candidates</a>
+  <li style="list-style-type: none; padding: 0; margin: 0;">
+    <a href="#" onclick="showImportDialog()" class="addlink">📥 Import Candidates</a>
   </li>
 {% endif %}
 {% endblock %}
@@ -25,43 +25,64 @@
     }
     
     .import-dialog-content {
-      background-color: #fefefe;
-      margin: 15% auto;
-      padding: 20px;
-      border: 1px solid #888;
-      width: 50%;
-      border-radius: 5px;
+      background-color: #fff;
+      margin: 10% auto;
+      padding: 30px;
+      border: 1px solid #ccc;
+      width: 40%;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
     
     .close {
-      color: #aaa;
+      color: #888;
       float: right;
-      font-size: 28px;
+      font-size: 26px;
       font-weight: bold;
       cursor: pointer;
     }
     
     .close:hover,
     .close:focus {
-      color: black;
+      color: #000;
+      text-decoration: none;
+    }
+    
+    .import-dialog h3 {
+      margin-top: 0;
+      font-size: 20px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
     }
     
     .institute-list {
       max-height: 300px;
       overflow-y: auto;
       border: 1px solid #ddd;
-      padding: 10px;
-      margin: 10px 0;
+      padding: 0;
+      margin-top: 15px;
+      border-radius: 4px;
     }
     
     .institute-item {
-      padding: 8px;
+      padding: 12px 16px;
       border-bottom: 1px solid #eee;
       cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    
+    .institute-item:last-child {
+      border-bottom: none;
     }
     
     .institute-item:hover {
-      background-color: #f5f5f5;
+      background-color: #f0f0f0;
+    }
+    
+    .no-institutes {
+      padding: 12px 16px;
+      color: #777;
     }
   </style>
 {% endblock %}
@@ -78,7 +99,7 @@
         {% for institute in institutes %}
           <div class="institute-item" onclick="selectInstitute({{ institute.id }})">{{ institute.name }}</div>
         {% empty %}
-          <p>No institutes available.</p>
+          <div class="no-institutes">No institutes available.</div>
         {% endfor %}
       </div>
     </div>
@@ -94,14 +115,12 @@
     }
     
     function selectInstitute(instituteId) {
-      // Redirect to import page with selected institute ID
       window.location.href = '{% url "admin:appAuthentication_candidate_import" %}?institute_id=' + instituteId
     }
     
-    // Close dialog when clicking outside
     window.onclick = function (event) {
-      var dialog = document.getElementById('importDialog')
-      if (event.target == dialog) {
+      const dialog = document.getElementById('importDialog')
+      if (event.target === dialog) {
         closeImportDialog()
       }
     }

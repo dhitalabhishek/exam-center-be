@@ -1,0 +1,372 @@
+{% extends 'admin/base_site.html' %}
+{% load static %}
+
+{% block title %}System Logs{% endblock %}
+
+{% block extrahead %}
+<style>
+    .logs-container {
+        padding: 20px;
+        max-width: 100%;
+    }
+
+    .logs-header {
+        background: #fff;
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+
+    .logs-title {
+        font-size: 24px;
+        margin-bottom: 10px;
+        color: #333;
+    }
+
+    .stats-info {
+        color: #666;
+        margin-bottom: 0;
+    }
+
+    .filters-card {
+        background: #fff;
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+
+    .filters-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+    }
+
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .filter-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .filter-input, .filter-select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .filter-input:focus, .filter-select:focus {
+        outline: none;
+        border-color: #007cba;
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 14px;
+        display: inline-block;
+    }
+
+    .btn-primary {
+        background: #007cba;
+        color: white;
+    }
+
+    .btn-secondary {
+        background: #f1f1f1;
+        color: #333;
+        border: 1px solid #ddd;
+    }
+
+    .btn:hover {
+        opacity: 0.9;
+    }
+
+    .logs-table-container {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        overflow: auto;
+        max-height: 70vh;
+    }
+
+    .logs-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 800px;
+    }
+
+    .logs-table th {
+        background: #f8f9fa;
+        padding: 12px 8px;
+        text-align: left;
+        font-weight: bold;
+        border-bottom: 2px solid #ddd;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .logs-table td {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+        font-size: 13px;
+    }
+
+    .logs-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+
+    .action-badge {
+        padding: 4px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+
+    .action-add {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .action-change {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .action-delete {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .time-cell {
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .user-cell {
+        max-width: 150px;
+        word-wrap: break-word;
+        font-size: 12px;
+    }
+
+    .object-cell {
+        max-width: 200px;
+        word-wrap: break-word;
+    }
+
+    .message-cell {
+        max-width: 300px;
+        word-wrap: break-word;
+        line-height: 1.4;
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 20px;
+        padding: 20px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+
+    .pagination a, .pagination span {
+        padding: 8px 12px;
+        text-decoration: none;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+
+    .pagination a {
+        color: #007cba;
+    }
+
+    .pagination a:hover {
+        background: #f8f9fa;
+    }
+
+    .pagination .current {
+        background: #007cba;
+        color: white;
+        border-color: #007cba;
+    }
+
+    .no-logs {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+
+    @media (max-width: 768px) {
+        .filters-row {
+            flex-direction: column;
+        }
+        
+        .filter-group {
+            min-width: unset;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="logs-container">
+    <!-- Header -->
+    <div class="logs-header">
+        <h1 class="logs-title">System Logs</h1>
+        <p class="stats-info">Total logs: {{ total_logs }} | Showing page {{ page_number }} of {{ total_pages }}</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-card">
+        <form method="GET" id="filterForm">
+            <input type="hidden" name="page" value="1">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label class="filter-label">Search</label>
+                    <input type="text" name="search" class="filter-input" 
+                           placeholder="Search in logs..." 
+                           value="{{ current_filters.search }}">
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">User</label>
+                    <select name="user" class="filter-select">
+                        <option value="">All Users</option>
+                        {% for user in unique_users %}
+                            <option value="{{ user }}" {% if current_filters.user == user %}selected{% endif %}>
+                                {{ user }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Action</label>
+                    <select name="action" class="filter-select">
+                        <option value="">All Actions</option>
+                        <option value="add" {% if current_filters.action == 'add' %}selected{% endif %}>Add</option>
+                        <option value="change" {% if current_filters.action == 'change' %}selected{% endif %}>Change</option>
+                        <option value="delete" {% if current_filters.action == 'delete' %}selected{% endif %}>Delete</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Time Range</label>
+                    <select name="time" class="filter-select">
+                        <option value="">All Time</option>
+                        <option value="1h" {% if current_filters.time == '1h' %}selected{% endif %}>Last Hour</option>
+                        <option value="24h" {% if current_filters.time == '24h' %}selected{% endif %}>Last 24 Hours</option>
+                        <option value="7d" {% if current_filters.time == '7d' %}selected{% endif %}>Last 7 Days</option>
+                        <option value="30d" {% if current_filters.time == '30d' %}selected{% endif %}>Last 30 Days</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-buttons">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="{% url 'log_view' %}" class="btn btn-secondary">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="logs-table-container">
+        {% if logs %}
+            <table class="logs-table">
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">Date & Time</th>
+                        <th style="width: 150px;">User</th>
+                        <th style="width: 80px;">Action</th>
+                        <th style="width: 200px;">Object</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="time-cell">
+                            {{ log.action_time|date:"M d, Y" }}<br>
+                            {{ log.action_time|time:"H:i:s" }}
+                        </td>
+                        <td class="user-cell">
+                            {{ log.user.email|default:"System" }}
+                        </td>
+                        <td>
+                            {% if log.action_flag == 1 %}
+                                <span class="action-badge action-add">ADD</span>
+                            {% elif log.action_flag == 2 %}
+                                <span class="action-badge action-change">CHANGE</span>
+                            {% elif log.action_flag == 3 %}
+                                <span class="action-badge action-delete">DELETE</span>
+                            {% endif %}
+                        </td>
+                        <td class="object-cell">{{ log.object_repr }}</td>
+                        <td class="message-cell">{{ log.change_message|linebreaks }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="no-logs">
+                <h3>No logs found</h3>
+                <p>Try adjusting your filters to see results.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if logs %}
+    <div class="pagination">
+        {% if logs.has_previous %}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1">&laquo; First</a>
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ logs.previous_page_number }}">&lsaquo; Previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ logs.number }} of {{ logs.paginator.num_pages }}
+        </span>
+
+        {% if logs.has_next %}
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ logs.next_page_number }}">Next &rsaquo;</a>
+            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ logs.paginator.num_pages }}">Last &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Only auto-submit on dropdown changes, not search input
+    const dropdowns = document.querySelectorAll('select.filter-select');
+    dropdowns.forEach(dropdown => {
+        dropdown.addEventListener('change', function() {
+            document.getElementById('filterForm').submit();
+        });
+    });
+});
+</script>
+{% endblock %}
