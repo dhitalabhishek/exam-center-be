@@ -1,7 +1,7 @@
 {% extends 'admin/base_site.html' %}
 {% load static %}
 
-{% block title %}System Logs{% endblock %}
+{% block title %}Admin And User Logs{% endblock %}
 
 {% block extrahead %}
 <style>
@@ -97,6 +97,29 @@
 
     .btn:hover {
         opacity: 0.9;
+    }
+
+    .btn-success {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-info {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .download-buttons {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .download-buttons::before {
+        content: "Download:";
+        font-size: 14px;
+        color: #666;
+        margin-right: 8px;
     }
 
     .logs-table-container {
@@ -235,7 +258,7 @@
 <div class="logs-container">
     <!-- Header -->
     <div class="logs-header">
-        <h1 class="logs-title">System Logs</h1>
+        <h1 class="logs-title">Admin And User Logs</h1>
         <p class="stats-info">Total logs: {{ total_logs }} | Showing page {{ page_number }} of {{ total_pages }}</p>
     </div>
 
@@ -288,6 +311,18 @@
             <div class="filter-buttons">
                 <button type="submit" class="btn btn-primary">Apply Filters</button>
                 <a href="{% url 'log_view' %}" class="btn btn-secondary">Reset</a>
+                
+                <!-- Download Buttons -->
+                <div class="download-buttons" style="margin-left: 20px;">
+                    <a href="?{% for key, value in request.GET.items %}{{ key }}={{ value }}&{% endfor %}download=csv" 
+                       class="btn btn-success" title="Download filtered logs as CSV">
+                        📄 CSV
+                    </a>
+                    <a href="?{% for key, value in request.GET.items %}{{ key }}={{ value }}&{% endfor %}download=json" 
+                       class="btn btn-info" title="Download filtered logs as JSON">
+                        📋 JSON
+                    </a>
+                </div>
             </div>
         </form>
     </div>
