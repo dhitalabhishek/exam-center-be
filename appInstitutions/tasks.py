@@ -93,7 +93,7 @@ def delete_institute_and_all_users(self, institute_id):
                         f"[delete_institute_and_all_users] Institute {institute_id} does not exist.",
                     )
 
-            task.status = CeleryTask.STATUS_CHOICES[5][0]  # SUCCESS
+            task.status = CeleryTask.get_status_value("SUCCESS")
             result_data = {
                 "institute_id": institute_id,
                 "total_deleted_users": total_deleted,
@@ -110,7 +110,7 @@ def delete_institute_and_all_users(self, institute_id):
             )
 
             task.message = f"Task failed: {exc!s}"
-            task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+            task.status = CeleryTask.get_status_value("FAILURE")
             task.result = str({"institute_id": institute_id, "error": str(exc)})
             task.save()
 

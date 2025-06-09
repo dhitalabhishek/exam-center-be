@@ -52,7 +52,8 @@ def process_candidates_file(self, file_path, institute_id):
             total_rows = len(rows)
             if total_rows == 0:
                 task.message = "File is empty - no candidates to process"
-                task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+                task.status = CeleryTask.get_status_value("FAILURE")
+
                 task.save()
                 return {"status": "error", "message": "File is empty"}
 
@@ -139,10 +140,10 @@ def process_candidates_file(self, file_path, institute_id):
             # Update task status
             if errors:
                 task.message = f"Completed with {len(errors)} errors"
-                task.status = CeleryTask.STATUS_CHOICES[3][0]  # PARTIAL_SUCCESS
+                task.status = CeleryTask.get_status_value("RETRY")
             else:
                 task.message = "Successfully processed all candidates"
-                task.status = CeleryTask.STATUS_CHOICES[5][0]  # SUCCESS
+                task.status = CeleryTask.get_status_value("SUCCESS")
 
             result_data = {
                 "total_rows": total_rows,
@@ -162,7 +163,7 @@ def process_candidates_file(self, file_path, institute_id):
         except Exception as e:
             logger.exception(f"Task failed: {e!s}")
             task.message = f"Task failed: {e!s}"
-            task.status = CeleryTask.STATUS_CHOICES[4][0]  # FAILURE
+            task.status = CeleryTask.get_status_value("FAILURE")
             task.save()
             raise self.retry(countdown=60, max_retries=3, exc=e)  # noqa: B904
 

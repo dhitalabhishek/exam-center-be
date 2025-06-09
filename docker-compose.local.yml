@@ -4,8 +4,9 @@ volumes:
   backend_local_redis_data: {}
   backend_local_minio_data: {}
   backend_local_grafana_data: {}
-  static_volume: {}
-  media_volume: {}
+  static_volume:
+  media_volume:
+
 
 services:
   django: &django
@@ -37,7 +38,6 @@ services:
     depends_on:
       - django
     volumes:
-      - ./frontend/dist:/app/frontend:ro
       - static_volume:/app/backend/static:ro
       - media_volume:/app/backend/media:ro
       - ./compose/local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -57,7 +57,7 @@ services:
       - ./.envs/.local/.postgres
 
   redis:
-    image: redis:6
+    image: docker.io/redis:6
     container_name: backend_local_redis
     volumes:
       - backend_local_redis_data:/data
@@ -69,8 +69,6 @@ services:
     depends_on:
       - redis
       - postgres
-    env_file:
-      - ./.envs/.local/.django
     ports: []
     command: /start-celeryworker
 
@@ -81,8 +79,6 @@ services:
     depends_on:
       - redis
       - postgres
-    env_file:
-      - ./.envs/.local/.django
     ports: []
     command: /start-celerybeat
 
@@ -90,9 +86,6 @@ services:
     <<: *django
     image: backend_local_flower
     container_name: backend_local_flower
-    env_file:
-      - ./.envs/.local/.flower
-      - ./.envs/.local/.django
     ports:
       - '5555:5555'
     command: /start-flower
@@ -100,13 +93,13 @@ services:
   minio:
     image: minio/minio:latest
     container_name: backend_local_minio
-    env_file:
-      - ./.envs/.local/.minio
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - backend_local_minio_data:/data
+    env_file:
+      - ./.envs/.local/.django
     command: server /data --console-address ":9001"
 
   prometheus:
@@ -120,10 +113,10 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: backend_local_grafana
-    env_file:
-      - ./.envs/.local/.grafana
     ports:
       - "3000:3000"
+    env_file:
+      - ./.envs/.local/.django
     volumes:
       - backend_local_grafana_data:/var/lib/grafana
 
@@ -150,8 +143,6 @@ services:
     container_name: backend_local_locust
     depends_on:
       - django
-    env_file:
-      - ./.envs/.local/.locust
     volumes:
       - ./compose/local/locust:/mnt/locust
     working_dir: /mnt/locust
@@ -162,3 +153,5 @@ services:
       - --web-port=8089
     ports:
       - "8089:8089"
+    env_file:
+      - ./.envs/.local/.django

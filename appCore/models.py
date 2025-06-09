@@ -26,3 +26,7 @@ class CeleryTask(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.status})"
+
+    @classmethod
+    def get_status_value(cls, key):
+        return dict(cls.STATUS_CHOICES).get(key, cls.STATUS_CHOICES[0][0])
