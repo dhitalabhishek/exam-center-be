@@ -88,15 +88,29 @@ CELERY_TASK_SERIALIZER = "json"
 
 
 # minio setup
-INSTALLED_APPS += ["storages"]
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+# MinIO configuration
 AWS_ACCESS_KEY_ID = os.getenv("MINIO_ROOT_USER")
 AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_ROOT_PASSWORD")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")
 AWS_S3_REGION_NAME = "us-east-1"
 AWS_S3_ADDRESSING_STYLE = "path"
+
+# Additional MinIO-specific settings
+AWS_S3_USE_SSL = False  # Set to True if using HTTPS
+AWS_S3_VERIFY = False  # Disable SSL verification for local development
+AWS_QUERYSTRING_AUTH = False  # Disable query parameter authentication
+AWS_DEFAULT_ACL = None  # Use bucket's default ACL
+
 
 
 # SIMPLE_JWT = {  # noqa: ERA001

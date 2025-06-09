@@ -17,19 +17,14 @@ from .tasks import validate_file_format
 class CustomUserAdmin(admin.ModelAdmin):
     list_display = (
         "email",
-        "is_staff",
-        "is_admin",
-        "is_candidate",
         "last_login",
     )
-    list_filter = (
-        "is_staff",
-        "is_admin",
-        "is_candidate",
-    )
-
-    ordering = ('email',)
+    ordering = ("email",)
     search_fields = ("email",)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.filter(is_admin=True)  # Only admin users
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
@@ -37,20 +32,25 @@ class CustomUserAdmin(admin.ModelAdmin):
         return super().get_form(request, obj, **kwargs)
 
 
-
 admin.site.register(User, CustomUserAdmin)
 
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    readonly_fields = ("verification_status","user")
-    list_display = ("symbol_number", "first_name", "last_name", "get_institute_name", "program_id")
+    readonly_fields = ("verification_status", "user")
+    list_display = (
+        "symbol_number",
+        "first_name",
+        "last_name",
+        "get_institute_name",
+        "program_id",
+    )
     search_fields = ("symbol_number", "first_name", "last_name")
     list_filter = ("institute",)
 
-
     def get_institute_name(self, obj):
         return obj.institute.name if obj.institute else "No Institute"
+
     get_institute_name.short_description = "Institute"
 
     def changelist_view(self, request, extra_context=None):
@@ -101,7 +101,9 @@ class CandidateAdmin(admin.ModelAdmin):
             allowed_extensions = [".csv", ".xlsx", ".xls"]
             file_extension = uploaded_file.name.lower().split(".")[-1]
             if f".{file_extension}" not in allowed_extensions:
-                messages.error(request, "Please upload a CSV or Excel file (.csv, .xlsx, .xls).")
+                messages.error(
+                    request, "Please upload a CSV or Excel file (.csv, .xlsx, .xls)."
+                )
                 return redirect(request.get_full_path())
 
             if not institute_id:
@@ -122,7 +124,9 @@ class CandidateAdmin(admin.ModelAdmin):
                 if not validation_result["is_valid"]:
                     # Clean up the uploaded file
                     default_storage.delete(file_path)
-                    messages.error(request, f"File validation failed: {validation_result['error']}")
+                    messages.error(
+                        request, f"File validation failed: {validation_result['error']}"
+                    )
                     return redirect(request.get_full_path())
 
                 # Start the Celery task with the new function
