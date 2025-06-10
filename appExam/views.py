@@ -28,9 +28,7 @@ def get_exam_session_view(request):
 
         # MODIFIED: Get all enrollments and select the earliest ongoing session
         enrollments = (
-            StudentExamEnrollment.objects.filter(
-                candidate=candidate,
-            )
+            StudentExamEnrollment.objects.filter(candidate=candidate)
             .select_related(
                 "session",
                 "session__exam",
@@ -51,7 +49,6 @@ def get_exam_session_view(request):
         enrollment = enrollments.first()
 
         session = enrollment.session
-        exam = session.exam
 
         if session.status != "ongoing":
             return Response(
@@ -61,6 +58,8 @@ def get_exam_session_view(request):
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+
+        exam = session.exam
 
         # Count total questions for this session
         total_questions = Question.objects.filter(session=session).count()
@@ -151,6 +150,7 @@ def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
             .select_related(
                 "session",
@@ -170,15 +170,6 @@ def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
             )
 
         enrollment = enrollments.first()
-
-        if enrollment.session.status != "ongoing":
-            return Response(
-                {
-                    "error": "Exam session has not started yet.",
-                    "status": 422,
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
 
         # Get pagination parameters - force page_size to 1
         page = int(request.GET.get("page", 1))
@@ -338,6 +329,7 @@ def get_question_list_view(request):
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
             .select_related(
                 "session",
@@ -445,6 +437,7 @@ def submit_answer_view(request):  # noqa: PLR0911
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
             .select_related(
                 "session",
