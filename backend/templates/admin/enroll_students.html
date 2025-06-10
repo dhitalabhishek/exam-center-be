@@ -51,11 +51,29 @@
               <dt class="col-sm-3">Status:</dt>
               <dd class="col-sm-9">
                 <span class="badge badge-{% if session.status == 'scheduled' %}
+                    
+                    
+                    
                     info
+
+
+
                   {% elif session.status == 'completed' %}
+                    
+                    
+                    
                     success
+
+
+
                   {% else %}
+                    
+                    
+                    
                     warning
+
+
+
                   {% endif %}">
                   {{ session.get_status_display }}
                 </span>
@@ -77,18 +95,18 @@
             </div>
             <div class="card-body">
               <div class="form-group">
-                <label for="id_hall_assignment" class="required">
+                <label for="id_hall" class="required">
                   <i class="fas fa-map-marker-alt"></i>
                   Select Hall:
                 </label>
-                {{ form.hall_assignment }}
-                {% if form.hall_assignment.help_text %}
-                  <small class="form-text text-muted">{{ form.hall_assignment.help_text }}</small>
+                {{ form.hall }}
+                {% if form.hall.help_text %}
+                  <small class="form-text text-muted">{{ form.hall.help_text }}</small>
                 {% endif %}
-                {% if form.hall_assignment.errors %}
+                {% if form.hall.errors %}
                   <div class="alert alert-danger alert-dismissible mt-2">
                     <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                    {% for error in form.hall_assignment.errors %}
+                    {% for error in form.hall.errors %}
                       <p class="mb-0">
                         <i class="icon fas fa-exclamation-circle"></i> {{ error }}
                       </p>
@@ -271,18 +289,42 @@
                         </td>
                         <td class="text-center">
                           <span class="badge badge-pill bg-{% if assignment.studentexamenrollment_set.count == 0 %}
+                              
+                              
+                              
                               secondary
+
+
+
                             {% else %}
+                              
+                              
+                              
                               primary
+
+
+
                             {% endif %}"
                             style="font-size: 1.1em;">
                             {{ assignment.studentexamenrollment_set.count }}
                           </span>
                           <div class="progress mt-1" style="height: 5px;">
                             <div class="progress-bar bg-{% if assignment.studentexamenrollment_set.count == 0 %}
+                                
+                                
+                                
                                 secondary
+
+
+
                               {% else %}
+                                
+                                
+                                
                                 info
+
+
+
                               {% endif %}"
                               role="progressbar"
                               style="width: {% widthratio assignment.studentexamenrollment_set.count assignment.hall.capacity 100 %}%"></div>
@@ -307,7 +349,7 @@
     // Add modern input styling
     document.addEventListener('DOMContentLoaded', function () {
       // Add form-control classes to inputs
-      const hallSelect = document.getElementById('id_hall_assignment')
+      const hallSelect = document.getElementById('id_hall')
       const rangeInput = document.getElementById('id_range_string')
     
       if (hallSelect) hallSelect.classList.add('form-control', 'form-control-lg')
