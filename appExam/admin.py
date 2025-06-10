@@ -1,11 +1,11 @@
 import os
 import tempfile
 
+from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.forms import CharField
-from django.forms import Form
 from django.forms import ModelChoiceField
 from django.forms import Textarea
 from django.http import HttpResponseRedirect
@@ -36,21 +36,41 @@ from .tasks import enroll_students_by_symbol_range
 
 admin.site.register(StudentAnswer)
 
-# Custom form for range enrollment
-class EnrollmentRangeForm(Form):
-    range_string = CharField(
-        max_length=200,
-        help_text="Enter range like '13-A1-PT - 14-C2-GM' or single symbol '17-A6-12'",
-        widget=Textarea(attrs={"rows": 3, "cols": 50}),
-    )
 
+# Custom form for range enrollment
+# class EnrollmentRangeForm(Form):
+#     range_string = CharField(
+#         max_length=200,
+#         help_text="Enter range like '13-A1-PT - 14-C2-GM' or single symbol '17-A6-12'",
+#         widget=Textarea(attrs={"rows": 3, "cols": 50}),
+#     )
+
+#     def __init__(self, session_id, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         # Filter hall assignments for this session
+#         self.fields["hall_assignment"] = ModelChoiceField(
+#             queryset=HallAndStudentAssignment.objects.filter(session_id=session_id),
+#             help_text="Select which hall assignment this range applies to",
+#         )
+
+
+
+class EnrollmentRangeForm(forms.Form):
     def __init__(self, session_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Filter hall assignments for this session
-        self.fields["hall_assignment"] = ModelChoiceField(
-            queryset=HallAndStudentAssignment.objects.filter(session_id=session_id),
-            help_text="Select which hall assignment this range applies to",
+        self.fields["hall"] = forms.ModelChoiceField(
+            queryset=Hall.objects.all(),
+            label="Select Hall",
+            help_text="Select the hall for the students to be assigned to.",
         )
+        self.fields["range_string"] = forms.CharField(
+            label="Symbol Number Range",
+            max_length=500,
+            widget=forms.TextInput(attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"}),
+            help_text="Enter comma-separated ranges or individual symbols.",
+        )
+
+# admin.site.register(HallAndStudentAssignment)
 
 
 # Custom admin view for enrolling students
@@ -68,7 +88,17 @@ def enroll_students_view(request, session_id):
         form = EnrollmentRangeForm(session_id, request.POST)
         if form.is_valid():
             range_string = form.cleaned_data["range_string"]
-            hall_assignment = form.cleaned_data["hall_assignment"]
+            hall = form.cleaned_data["hall"]  # Get selected hall object
+
+            # Get or create hall assignment
+            hall_assignment, created = HallAndStudentAssignment.objects.get_or_create(
+                session=session, hall=hall, defaults={"roll_number_range": range_string},
+            )
+
+            # If already exists, update range
+            if not created:
+                hall_assignment.roll_number_range = range_string
+                hall_assignment.save()
 
             # Trigger the Celery task
             task = enroll_students_by_symbol_range.delay(
@@ -110,22 +140,6 @@ class ExamAdmin(admin.ModelAdmin):
     list_per_page = 10
 
 
-class HallAndStudentAssignmentInline(admin.TabularInline):
-    model = HallAndStudentAssignment
-    extra = 1
-    fields = ("hall", "enrolled_count")
-    show_change_link = True
-    readonly_fields = ("enrolled_count",)
-
-    def enrolled_count(self, obj):
-        """Show count of enrolled students for this assignment"""
-        if obj.pk:
-            return StudentExamEnrollment.objects.filter(hall_assignment=obj).count()
-        return 0
-
-    enrolled_count.short_description = "Enrolled Students"
-
-
 @admin.register(ExamSession)
 class ExamSessionAdmin(admin.ModelAdmin):
     list_display = (
@@ -137,7 +151,6 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "enroll_students_link",
         "duration",
     )
-    inlines = [HallAndStudentAssignmentInline]
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
@@ -148,7 +161,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         if obj.pk:
             url = reverse("admin:enroll_students", args=[obj.pk])
             return format_html(
-                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',
+                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',  # noqa: E501
                 url,
             )
         return "Save the session first"
@@ -170,7 +183,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
 @admin.register(StudentExamEnrollment)
 class StudentExamEnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "session", "hall_assignment", "time_remaining")
+    list_display = ("candidate", "session", "time_remaining")
     list_filter = ("session__status", "hall_assignment__hall")
     list_per_page = 10
     readonly_fields = ("candidate", "session", "hall_assignment")

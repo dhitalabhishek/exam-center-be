@@ -159,7 +159,7 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
                         candidates_in_range.append(candidate.symbol_number)
 
                         # Check if candidate is in the correct program
-                        if candidate.program_id != program.program_id:
+                        if int(candidate.program_id) != int(program.program_id):
                             not_in_program_count += 1
                             error_msg = (
                                 f"Candidate {candidate.symbol_number} skipped: "
@@ -201,10 +201,7 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
                         errors.append(error_msg)
                         logger.error(error_msg)
 
-            # Final updates
-            hall_assignment.roll_number_range = range_string
-            hall_assignment.save()
-
+            # Create successful result
             result = {
                 "success": True,
                 "session_id": session_id,
@@ -212,14 +209,19 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
                 "range_processed": range_string,
                 "enrolled_count": enrolled_count,
                 "skipped_count": skipped_count,
-                "not_in_program_count": not_in_program_count,  # New field
+                "not_in_program_count": not_in_program_count,
                 "error_count": error_count,
-                "errors": errors[:10],  # Limit to first 10 errors
+                "errors": errors,
                 "total_candidates_checked": total_candidates,
                 "candidates_in_range": candidates_in_range,
-                "parsed_ranges": ranges,  # For debugging
+                "parsed_ranges": ranges,
             }
 
+            # Only update range if task completed successfully
+            hall_assignment.roll_number_range = hall_assignment.roll_number_range+ ", " + range_string
+            hall_assignment.save()
+
+            # Final task updates
             task.message = (
                 f"Complete: {enrolled_count} enrolled, "
                 f"{skipped_count} skipped, {error_count} errors, "
@@ -244,4 +246,12 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
             task.status = CeleryTask.get_status_value("FAILURE")
             task.result = str({"error": error_msg})
             task.save()
-            raise
+
+            # Return error result without updating range
+            return {
+                "success": False,
+                "session_id": session_id,
+                "hall_assignment_id": hall_assignment_id,
+                "range_processed": range_string,
+                "error": error_msg,
+            }
