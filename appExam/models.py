@@ -64,6 +64,11 @@ class ExamSession(models.Model):
         default="scheduled",
     )
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "start_time"]),
+        ]
+
     def __str__(self):
         halls = " ".join(f"{ha.hall.name}," for ha in self.hall_assignments.all())
         return f"{self.exam} at {self.start_time.strftime('%Y-%m-%d %H:%M')} in {halls}"
@@ -186,6 +191,10 @@ class StudentAnswer(models.Model):
     class Meta:
         unique_together = [
             ("enrollment", "question"),
+        ]
+
+        indexes = [
+            models.Index(fields=["enrollment", "question"]),
         ]
 
     def __str__(self):

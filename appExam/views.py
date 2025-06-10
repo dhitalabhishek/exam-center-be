@@ -28,9 +28,7 @@ def get_exam_session_view(request):
 
         # MODIFIED: Get all enrollments and select the earliest ongoing session
         enrollments = (
-            StudentExamEnrollment.objects.filter(
-                candidate=candidate,
-            )
+            StudentExamEnrollment.objects.filter(candidate=candidate)
             .select_related(
                 "session",
                 "session__exam",
@@ -51,7 +49,6 @@ def get_exam_session_view(request):
         enrollment = enrollments.first()
 
         session = enrollment.session
-        exam = session.exam
 
         if session.status != "ongoing":
             return Response(
@@ -61,6 +58,8 @@ def get_exam_session_view(request):
                 },
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+
+        exam = session.exam
 
         # Count total questions for this session
         total_questions = Question.objects.filter(session=session).count()
@@ -151,6 +150,7 @@ def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
             .select_related(
                 "session",
@@ -170,15 +170,6 @@ def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
             )
 
         enrollment = enrollments.first()
-
-        if enrollment.session.status != "ongoing":
-            return Response(
-                {
-                    "error": "Exam session has not started yet.",
-                    "status": 422,
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
 
         # Get pagination parameters - force page_size to 1
         page = int(request.GET.get("page", 1))
@@ -325,77 +316,116 @@ def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
 @permission_classes([IsAuthenticated])
 def get_question_list_view(request):
     """
-    Get a simple list of questions for the authenticated candidate's exam session.
-    Returns questions in the randomized order specific to this candidate.
-
-    Returns:
-    - List of questions with id and question text only
+    Get a full list of questions + answers for the authenticated candidate's ongoing exam.
+    Each question entry includes:
+      - id, question text
+      - answers: [{ options, answer_number }, …]
+      - student_answer (letter) and is_answered flag
     """
     try:
         candidate = Candidate.objects.get(user=request.user)
 
-        # MODIFIED: Get all enrollments and select the earliest ongoing session
+        # Pick the earliest ongoing session
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
-            .select_related(
-                "session",
-                "session__exam",
-                "session__exam__program",
-                "session__exam__subject",
-                "hall_assignment",
-                "hall_assignment__hall",
-            )
+            .select_related("session__exam__program")
             .order_by("session__start_time")
         )
-
         if not enrollments.exists():
             return Response(
-                {"error": "No scheduled exams found for the user", "status": 404},
+                {"error": "No scheduled exams found", "status": 404},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         enrollment = enrollments.first()
-
+        # (Optional) remove this check since you already filtered by ongoing:
         if enrollment.session.status != "ongoing":
             return Response(
-                {
-                    "error": "Exam session has not started yet.",
-                    "status": 422,
-                },
+                {"error": "Exam has not started.", "status": 422},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-        # Get the randomized question order for this candidate
-        question_order = enrollment.question_order
+        q_order = enrollment.question_order or []
+        a_order = enrollment.answer_order or {}
 
-        if not question_order:
+        if not q_order:
             return Response(
-                {
-                    "error": "Questions not yet randomized for this candidate",
-                    "status": 400,
-                },
+                {"error": "Questions not yet randomized", "status": 400},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Fetch questions in the randomized order
-        questions_data = []
+        # Bulk‐fetch all Questions
+        questions = Question.objects.filter(id__in=q_order)
+        q_map = {q.id: q for q in questions}
 
-        for question_id in question_order:
-            try:
-                question = Question.objects.get(id=question_id)
-                questions_data.append(
-                    {
-                        "id": question.id,
-                        "question": question.text,
-                    },
-                )
-            except Question.DoesNotExist:
-                # Skip questions that don't exist
+        # Gather *all* answer IDs in one pass
+        all_answer_ids = []
+        for qid in q_order:
+            all_answer_ids.extend(a_order.get(str(qid), []))
+        # Bulk‐fetch all Answers
+        answers = Answer.objects.filter(id__in=all_answer_ids)
+        ans_map = {ans.id: ans for ans in answers}
+
+        # Fetch any existing StudentAnswers in one query
+        existing_sas = StudentAnswer.objects.filter(
+            enrollment=enrollment, question_id__in=q_order,
+        )
+        sa_map = {sa.question_id: sa for sa in existing_sas}
+
+        answer_letters = ["a", "b", "c", "d"]
+
+        questions_data = []
+        for qid in q_order:
+            q = q_map.get(qid)
+            if not q:
                 continue
 
-        # Return the response
+            # Build the answers for this question
+            answers_data = []
+            for idx, aid in enumerate(a_order.get(str(qid), [])):
+                ans = ans_map.get(aid)
+                if not ans:
+                    continue
+                letter = (
+                    answer_letters[idx] if idx < len(answer_letters) else str(idx + 1)
+                )
+                answers_data.append(
+                    {
+                        "options": ans.text,
+                        "answer_number": letter,
+                    },
+                )
+
+            # Student’s current answer (if any)
+            sa = sa_map.get(qid)
+            student_answer = None
+            is_answered = False
+            if sa and sa.selected_answer_id:
+                # find position in the randomized list
+                try:
+                    pos = a_order[str(qid)].index(sa.selected_answer_id)
+                    student_answer = (
+                        answer_letters[pos]
+                        if pos < len(answer_letters)
+                        else str(pos + 1)
+                    )
+                    is_answered = True
+                except (KeyError, ValueError):
+                    pass
+
+            questions_data.append(
+                {
+                    "id": q.id,
+                    "question": q.text,
+                    "answers": answers_data,
+                    "student_answer": student_answer,
+                    "is_answered": is_answered,
+                },
+            )
+
         return Response(
             {
                 "data": questions_data,
@@ -407,19 +437,7 @@ def get_question_list_view(request):
 
     except Candidate.DoesNotExist:
         return Response(
-            {
-                "error": "Candidate profile not found",
-                "status": 404,
-            },
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
-    except StudentExamEnrollment.DoesNotExist:
-        return Response(
-            {
-                "error": "No exam enrollment found for this candidate",
-                "status": 404,
-            },
+            {"error": "Candidate not found", "status": 404},
             status=status.HTTP_404_NOT_FOUND,
         )
 
@@ -445,6 +463,7 @@ def submit_answer_view(request):  # noqa: PLR0911
         enrollments = (
             StudentExamEnrollment.objects.filter(
                 candidate=candidate,
+                session__status="ongoing",
             )
             .select_related(
                 "session",
