@@ -24,21 +24,43 @@ def get_exam_session_view(request):
     Returns duration, number of questions, notice, etc.
     """
     try:
-        # Get the candidate from the authenticated user
         candidate = Candidate.objects.get(user=request.user)
 
-        # Get the enrollment for this candidate
-        enrollment = StudentExamEnrollment.objects.select_related(
-            "session",
-            "session__exam",
-            "session__exam__program",
-            "session__exam__subject",
-            "hall_assignment",
-            "hall_assignment__hall",
-        ).get(candidate=candidate)
+        # MODIFIED: Get all enrollments and select the earliest ongoing session
+        enrollments = (
+            StudentExamEnrollment.objects.filter(
+                candidate=candidate,
+            )
+            .select_related(
+                "session",
+                "session__exam",
+                "session__exam__program",
+                "session__exam__subject",
+                "hall_assignment",
+                "hall_assignment__hall",
+            )
+            .order_by("session__start_time")
+        )
+
+        if not enrollments.exists():
+            return Response(
+                {"error": "No scheduled exams found for the user", "status": 404},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        enrollment = enrollments.first()
 
         session = enrollment.session
         exam = session.exam
+
+        if session.status != "ongoing":
+            return Response(
+                {
+                    "error": "Exam session has not started yet.",
+                    "status": 422,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         # Count total questions for this session
         total_questions = Question.objects.filter(session=session).count()
@@ -113,7 +135,7 @@ def get_exam_session_view(request):
 # ------------------------- Get Paginated Questions -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_paginated_questions_view(request):
+def get_paginated_questions_view(request):  # noqa: C901, PLR0911, PLR0912
     """
     Get paginated questions for the authenticated candidate's exam session.
     Questions and answers are returned in the randomized order specific to this candidate.
@@ -123,13 +145,40 @@ def get_paginated_questions_view(request):
     - page: Page number (default: 1)
     """
     try:
-        # Get the candidate from the authenticated user
         candidate = Candidate.objects.get(user=request.user)
 
-        # Get the enrollment for this candidate
-        enrollment = StudentExamEnrollment.objects.select_related("session").get(
-            candidate=candidate,
+        # MODIFIED: Get all enrollments and select the earliest ongoing session
+        enrollments = (
+            StudentExamEnrollment.objects.filter(
+                candidate=candidate,
+            )
+            .select_related(
+                "session",
+                "session__exam",
+                "session__exam__program",
+                "session__exam__subject",
+                "hall_assignment",
+                "hall_assignment__hall",
+            )
+            .order_by("session__start_time")
         )
+
+        if not enrollments.exists():
+            return Response(
+                {"error": "No scheduled exams found for the user", "status": 404},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        enrollment = enrollments.first()
+
+        if enrollment.session.status != "ongoing":
+            return Response(
+                {
+                    "error": "Exam session has not started yet.",
+                    "status": 422,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         # Get pagination parameters - force page_size to 1
         page = int(request.GET.get("page", 1))
@@ -195,7 +244,8 @@ def get_paginated_questions_view(request):
 
             try:
                 student_answer_obj = StudentAnswer.objects.get(
-                    enrollment=enrollment, question=question,
+                    enrollment=enrollment,
+                    question=question,
                 )
                 if student_answer_obj.selected_answer:
                     # Find which answer letter corresponds to the selected answer
@@ -270,9 +320,114 @@ def get_paginated_questions_view(request):
         )
 
 
+# ------------------------- Get Question List -------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_question_list_view(request):
+    """
+    Get a simple list of questions for the authenticated candidate's exam session.
+    Returns questions in the randomized order specific to this candidate.
+
+    Returns:
+    - List of questions with id and question text only
+    """
+    try:
+        candidate = Candidate.objects.get(user=request.user)
+
+        # MODIFIED: Get all enrollments and select the earliest ongoing session
+        enrollments = (
+            StudentExamEnrollment.objects.filter(
+                candidate=candidate,
+            )
+            .select_related(
+                "session",
+                "session__exam",
+                "session__exam__program",
+                "session__exam__subject",
+                "hall_assignment",
+                "hall_assignment__hall",
+            )
+            .order_by("session__start_time")
+        )
+
+        if not enrollments.exists():
+            return Response(
+                {"error": "No scheduled exams found for the user", "status": 404},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        enrollment = enrollments.first()
+
+        if enrollment.session.status != "ongoing":
+            return Response(
+                {
+                    "error": "Exam session has not started yet.",
+                    "status": 422,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        # Get the randomized question order for this candidate
+        question_order = enrollment.question_order
+
+        if not question_order:
+            return Response(
+                {
+                    "error": "Questions not yet randomized for this candidate",
+                    "status": 400,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch questions in the randomized order
+        questions_data = []
+
+        for question_id in question_order:
+            try:
+                question = Question.objects.get(id=question_id)
+                questions_data.append(
+                    {
+                        "id": question.id,
+                        "question": question.text,
+                    },
+                )
+            except Question.DoesNotExist:
+                # Skip questions that don't exist
+                continue
+
+        # Return the response
+        return Response(
+            {
+                "data": questions_data,
+                "message": None,
+                "error": None,
+                "status": 200,
+            },
+        )
+
+    except Candidate.DoesNotExist:
+        return Response(
+            {
+                "error": "Candidate profile not found",
+                "status": 404,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    except StudentExamEnrollment.DoesNotExist:
+        return Response(
+            {
+                "error": "No exam enrollment found for this candidate",
+                "status": 404,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
+# ------------------------- Submit Answer -------------------------
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def submit_answer_view(request):
+def submit_answer_view(request):  # noqa: PLR0911
     """
     Submit an answer for a specific question.
 
@@ -284,7 +439,31 @@ def submit_answer_view(request):
     """
     try:
         candidate = Candidate.objects.get(user=request.user)
-        enrollment = StudentExamEnrollment.objects.get(candidate=candidate)
+        candidate = Candidate.objects.get(user=request.user)
+
+        # MODIFIED: Get all enrollments and select the earliest ongoing session
+        enrollments = (
+            StudentExamEnrollment.objects.filter(
+                candidate=candidate,
+            )
+            .select_related(
+                "session",
+                "session__exam",
+                "session__exam__program",
+                "session__exam__subject",
+                "hall_assignment",
+                "hall_assignment__hall",
+            )
+            .order_by("session__start_time")
+        )
+
+        if not enrollments.exists():
+            return Response(
+                {"error": "No scheduled exams found for the user", "status": 404},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        enrollment = enrollments.first()
 
         question_id = request.data.get("question_id")
         selected_answer_letter = request.data.get("selected_answer")
