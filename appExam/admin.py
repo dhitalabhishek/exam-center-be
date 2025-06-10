@@ -36,7 +36,6 @@ from .tasks import enroll_students_by_symbol_range
 
 admin.site.register(StudentAnswer)
 
-
 # Custom form for range enrollment
 class EnrollmentRangeForm(Form):
     range_string = CharField(
@@ -106,14 +105,9 @@ class HallAdmin(admin.ModelAdmin):
 
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ("id", "program", "get_subject", "total_marks")
+    list_display = ("id", "program", "subject", "total_marks")
     list_filter = ("program",)
     list_per_page = 10
-
-    def get_subject(self, obj):
-        return obj.subject.name if obj.subject else ""
-
-    get_subject.short_description = "Subject"
 
 
 class HallAndStudentAssignmentInline(admin.TabularInline):
