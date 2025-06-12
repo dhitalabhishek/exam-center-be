@@ -1,5 +1,6 @@
 # appExam/models.py
 from datetime import timedelta
+from datetime import timezone
 
 from ckeditor.fields import RichTextField
 from django.core.exceptions import ValidationError
@@ -53,6 +54,11 @@ class ExamSession(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True)
+
+    pause_started_at = models.DateTimeField(null=True, blank=True)
+    total_pause_duration = models.DurationField(default=timedelta(0))
+    expected_end_time = models.DateTimeField(null=True)  # Original end time
+
     notice = RichTextField(
         blank=True,
         help_text="Notice for the exam session, can include\
@@ -63,6 +69,7 @@ class ExamSession(models.Model):
         choices=STATUS_CHOICES,
         default="scheduled",
     )
+
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
@@ -74,6 +81,19 @@ class ExamSession(models.Model):
     def __str__(self):
         halls = " ".join(f"{ha.hall.name}," for ha in self.hall_assignments.all())
         return f"{self.exam} at {self.start_time.strftime('%Y-%m-%d %H:%M')} in {halls}"
+
+    def save(self, *args, **kwargs):
+        # Set expected_end_time on first save
+        if not self.expected_end_time and self.end_time:
+            self.expected_end_time = self.end_time
+        super().save(*args, **kwargs)
+
+    @property
+    def effective_end_time(self):
+        """Calculate end time with pauses accounted for"""
+        if self.expected_end_time and self.total_pause_duration:
+            return self.expected_end_time + self.total_pause_duration
+        return self.end_time
 
     @property
     def duration(self) -> timedelta:
@@ -178,12 +198,43 @@ class StudentExamEnrollment(models.Model):
         default=timedelta(minutes=60),
         help_text="Time remaining for this student in the exam session.",
     )
+
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
+    is_paused = models.BooleanField(default=False)
+    pause_started_at = models.DateTimeField(null=True, blank=True)
+    total_pause_duration = models.DurationField(default=timedelta(0))
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
+
+    @property
+    def effective_time_remaining(self):
+        """Calculate time remaining with pauses"""
+        if not self.session.start_time or not self.time_remaining:
+            return timedelta(0)
+
+        base_remaining = self.time_remaining
+        now = timezone.now()
+
+        # Subtract session pauses
+        if self.session.total_pause_duration:
+            base_remaining -= self.session.total_pause_duration
+
+        # Subtract current session pause
+        if self.session.pause_started_at:
+            base_remaining -= now - self.session.pause_started_at
+
+        # Subtract student pauses
+        if self.total_pause_duration:
+            base_remaining -= self.total_pause_duration
+
+        # Subtract current student pause
+        if self.is_paused and self.pause_started_at:
+            base_remaining -= now - self.pause_started_at
+
+        return max(base_remaining, timedelta(0))
 
 
 class StudentAnswer(models.Model):

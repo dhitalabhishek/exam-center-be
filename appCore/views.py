@@ -4,14 +4,22 @@ from datetime import timedelta
 
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.decorators import user_passes_test
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from appCore.utils.redis_client import get_redis_client
+from appExam.models import StudentExamEnrollment
 
 from .models import CeleryTask
+
+redis_client = get_redis_client()
 
 
 @never_cache
@@ -25,11 +33,9 @@ def task_last_updated(request):
     )
 
 
-
-
-
 def is_staff(user):
     return user.is_staff
+
 
 @user_passes_test(is_staff)
 def log_view(request):
@@ -45,14 +51,16 @@ def log_view(request):
     time_filter = request.GET.get("time", "")
 
     # Start with all logs
-    logs = LogEntry.objects.select_related("user", "content_type").order_by("-action_time")
+    logs = LogEntry.objects.select_related("user", "content_type").order_by(
+        "-action_time",
+    )
 
     # Apply search filter
     if search_query:
         logs = logs.filter(
-            Q(object_repr__icontains=search_query) |
-            Q(change_message__icontains=search_query) |
-            Q(user__email__icontains=search_query),
+            Q(object_repr__icontains=search_query)
+            | Q(change_message__icontains=search_query)
+            | Q(user__email__icontains=search_query),
         )
 
     # Apply user filter
@@ -82,16 +90,19 @@ def log_view(request):
 
     # Pagination
     from django.core.paginator import Paginator
+
     paginator = Paginator(logs, 50)  # Show 50 logs per page
     page_number = request.GET.get("page", 1)
     logs = paginator.get_page(page_number)
 
     # Get unique users for filter dropdown (limit and deduplicate properly)
-    unique_users = list(LogEntry.objects.select_related("user")
-                       .values_list("user__email", flat=True)
-                       .distinct()
-                       .exclude(user__email__isnull=True)
-                       .order_by("user__email")[:100])  # Limit to 100 unique users
+    unique_users = list(
+        LogEntry.objects.select_related("user")
+        .values_list("user__email", flat=True)
+        .distinct()
+        .exclude(user__email__isnull=True)
+        .order_by("user__email")[:100],
+    )  # Limit to 100 unique users
 
     # Simple action statistics
     action_stats = {
@@ -118,7 +129,7 @@ def log_view(request):
     return render(request, "admin/appcore/logs.html", context)
 
 
-def download_logs(request, format_type):
+def download_logs(request, format_type):  # noqa: C901
     """Download logs in CSV or JSON format"""
     # Get the same filters as the main view
     search_query = request.GET.get("search", "")
@@ -127,13 +138,15 @@ def download_logs(request, format_type):
     time_filter = request.GET.get("time", "")
 
     # Apply same filtering logic
-    logs = LogEntry.objects.select_related("user", "content_type").order_by("-action_time")
+    logs = LogEntry.objects.select_related("user", "content_type").order_by(
+        "-action_time",
+    )
 
     if search_query:
         logs = logs.filter(
-            Q(object_repr__icontains=search_query) |
-            Q(change_message__icontains=search_query) |
-            Q(user__email__icontains=search_query),
+            Q(object_repr__icontains=search_query)
+            | Q(change_message__icontains=search_query)
+            | Q(user__email__icontains=search_query),
         )
 
     if user_filter:
@@ -167,7 +180,9 @@ def download_logs(request, format_type):
 def download_csv(logs):
     """Export logs as CSV"""
     response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    response["Content-Disposition"] = (
+        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
 
     writer = csv.writer(response)
     writer.writerow(["Date", "Time", "User", "Action", "Object", "Message"])
@@ -181,14 +196,18 @@ def download_csv(logs):
         elif log.action_flag == 3:
             action_text = "DELETE"
 
-        writer.writerow([
-            log.action_time.strftime("%Y-%m-%d"),
-            log.action_time.strftime("%H:%M:%S"),
-            log.user.email if log.user else "System",
-            action_text,
-            log.object_repr,
-            log.change_message.replace("\n", " ").replace("\r", " ") if log.change_message else "",
-        ])
+        writer.writerow(
+            [
+                log.action_time.strftime("%Y-%m-%d"),
+                log.action_time.strftime("%H:%M:%S"),
+                log.user.email if log.user else "System",
+                action_text,
+                log.object_repr,
+                log.change_message.replace("\n", " ").replace("\r", " ")
+                if log.change_message
+                else "",
+            ],
+        )
 
     return response
 
@@ -196,7 +215,9 @@ def download_csv(logs):
 def download_json(logs):
     """Export logs as JSON"""
     response = HttpResponse(content_type="application/json")
-    response["Content-Disposition"] = f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.json"'
+    response["Content-Disposition"] = (
+        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.json"'
+    )
 
     logs_data = []
     for log in logs:
@@ -208,15 +229,86 @@ def download_json(logs):
         elif log.action_flag == 3:
             action_text = "DELETE"
 
-        logs_data.append({
-            "date": log.action_time.strftime("%Y-%m-%d"),
-            "time": log.action_time.strftime("%H:%M:%S"),
-            "datetime": log.action_time.isoformat(),
-            "user": log.user.email if log.user else "System",
-            "action": action_text,
-            "object": log.object_repr,
-            "message": log.change_message if log.change_message else "",
-        })
+        logs_data.append(
+            {
+                "date": log.action_time.strftime("%Y-%m-%d"),
+                "time": log.action_time.strftime("%H:%M:%S"),
+                "datetime": log.action_time.isoformat(),
+                "user": log.user.email if log.user else "System",
+                "action": action_text,
+                "object": log.object_repr,
+                "message": log.change_message if log.change_message else "",
+            },
+        )
 
     response.write(json.dumps(logs_data, indent=2))
     return response
+
+
+
+# ------------------------------ ping heartbeat endpoint ------------------------------
+@api_view(["POST"])
+def student_heartbeat(request, enrollment_id):
+    try:
+        with transaction.atomic():
+            # Lock enrollment record
+            e = StudentExamEnrollment.objects.select_for_update().get(id=enrollment_id)
+
+            # Resume if paused
+            if e.is_paused:
+                e.is_paused = False
+                e.status = "active"
+                e.save(update_fields=["is_paused", "status"])
+
+                # Use new resume task instead of manual calculation
+                from appExam.tasks import resume_student
+                resume_student.delay(enrollment_id)
+
+            # Update activity timestamp
+            e.last_activity = timezone.now()
+            e.save(update_fields=["last_activity"])
+
+        # Fetch events
+        ev = redis_client.get(f"exam_event_{enrollment_id}")
+        events = [json.loads(ev)] if ev else []
+        redis_client.delete(f"exam_event_{enrollment_id}") if ev else None
+
+        return Response({
+            "heartbeat": timezone.now().isoformat(),
+            "events": events,
+            "action_required": "handle_events" if events else "none",
+            # Add effective time remaining
+            "time_remaining": e.effective_time_remaining.total_seconds(),
+        })
+    except StudentExamEnrollment.DoesNotExist:
+        return Response({"error": "Enrollment not found"}, status=404)
+
+
+# ------------------------------ student exam status live ------------------------------
+@api_view(["GET"])
+def get_exam_status(request, enrollment_id):
+    try:
+        e = StudentExamEnrollment.objects.select_related("session").get(id=enrollment_id)  # noqa: E501
+
+        # Use effective time calculation
+        status = "paused" if e.is_paused else e.status
+        rem = e.effective_time_remaining.total_seconds() if status == "active" else 0
+
+        # Add session pause state
+        session_paused = e.session.pause_started_at is not None
+
+        payload = {
+            "status": status,
+            "time_remaining": rem,
+            "session_paused": session_paused,
+            "last_activity": e.last_activity.isoformat() if e.last_activity else None,
+        }
+
+        # Fetch events
+        ev = redis_client.get(f"exam_event_{enrollment_id}")
+        if ev:
+            payload["last_event"] = json.loads(ev)
+
+        return Response(payload)
+    except StudentExamEnrollment.DoesNotExist:
+        return Response({"error": "Enrollment not found"}, status=404)
