@@ -9,6 +9,10 @@ class Institute(models.Model):
     address = models.TextField(blank=True)
     logo = models.ImageField(upload_to="institutes/photos/", blank=True)
     website = models.URLField(blank=True)
+    show_student_submissions = models.BooleanField(
+        default=False,
+        help_text="If enabled, students can see their own answers after submissions",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
