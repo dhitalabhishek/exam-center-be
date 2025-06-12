@@ -63,6 +63,8 @@ class ExamSession(models.Model):
         choices=STATUS_CHOICES,
         default="scheduled",
     )
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         indexes = [
@@ -137,6 +139,17 @@ class Answer(models.Model):
 class StudentExamEnrollment(models.Model):
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE)
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("inactive", "Inactive"),
+            ("active", "Active"),
+            ("submitted", "Submitted"),
+        ],
+        default="inactive",
+    )
+
     hall_assignment = models.ForeignKey(
         HallAndStudentAssignment,
         on_delete=models.CASCADE,
@@ -165,6 +178,9 @@ class StudentExamEnrollment(models.Model):
         default=timedelta(minutes=60),
         help_text="Time remaining for this student in the exam session.",
     )
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
