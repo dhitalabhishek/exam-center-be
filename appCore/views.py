@@ -1,7 +1,9 @@
 import csv
 import json
+import logging
 from datetime import timedelta
 
+from celery import current_app
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.decorators import user_passes_test
 from django.db import transaction
@@ -12,14 +14,37 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from rest_framework.decorators import api_view
+from rest_framework.decorators import permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from appCore.tasks import expire_student_exam
 from appCore.utils.redis_client import get_redis_client
 from appExam.models import StudentExamEnrollment
 
 from .models import CeleryTask
 
+logger = logging.getLogger(__name__)
 redis_client = get_redis_client()
+
+
+# Action flag constants
+ACTION_ADD = 1
+ACTION_CHANGE = 2
+ACTION_DELETE = 3
+
+
+def get_enrollment_for_user(user):
+    """
+    Helper to fetch the active StudentExamEnrollment for the authenticated user
+    """
+    try:
+        return StudentExamEnrollment.objects.select_for_update().get(
+            student=user,
+            session__status__in=["ongoing", "scheduled"],
+        )
+    except StudentExamEnrollment.DoesNotExist:
+        return None
 
 
 @never_cache
@@ -38,7 +63,7 @@ def is_staff(user):
 
 
 @user_passes_test(is_staff)
-def log_view(request):
+def log_view(request):  # noqa: C901
     # Check if download is requested
     download_format = request.GET.get("download")
     if download_format in ["csv", "json"]:
@@ -173,7 +198,7 @@ def download_logs(request, format_type):  # noqa: C901
 
     if format_type == "csv":
         return download_csv(logs)
-    if format_type == "json":
+    if format_type == "json":  # noqa: RET503
         return download_json(logs)
 
 
@@ -181,7 +206,7 @@ def download_csv(logs):
     """Export logs as CSV"""
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = (
-        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'  # noqa: E501
     )
 
     writer = csv.writer(response)
@@ -189,11 +214,11 @@ def download_csv(logs):
 
     for log in logs:
         action_text = ""
-        if log.action_flag == 1:
+        if log.action_flag == ACTION_ADD:
             action_text = "ADD"
-        elif log.action_flag == 2:
+        elif log.action_flag == ACTION_CHANGE:
             action_text = "CHANGE"
-        elif log.action_flag == 3:
+        elif log.action_flag == ACTION_DELETE:
             action_text = "DELETE"
 
         writer.writerow(
@@ -216,17 +241,17 @@ def download_json(logs):
     """Export logs as JSON"""
     response = HttpResponse(content_type="application/json")
     response["Content-Disposition"] = (
-        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.json"'
+        f'attachment; filename="system_logs_{timezone.now().strftime("%Y%m%d_%H%M%S")}.json"'  # noqa: E501
     )
 
     logs_data = []
     for log in logs:
         action_text = ""
-        if log.action_flag == 1:
+        if log.action_flag == ACTION_ADD:
             action_text = "ADD"
-        elif log.action_flag == 2:
+        elif log.action_flag == ACTION_CHANGE:
             action_text = "CHANGE"
-        elif log.action_flag == 3:
+        elif log.action_flag == ACTION_DELETE:
             action_text = "DELETE"
 
         logs_data.append(
@@ -245,70 +270,160 @@ def download_json(logs):
     return response
 
 
-
-# ------------------------------ ping heartbeat endpoint ------------------------------
 @api_view(["POST"])
-def student_heartbeat(request, enrollment_id):
-    try:
-        with transaction.atomic():
-            # Lock enrollment record
-            e = StudentExamEnrollment.objects.select_for_update().get(id=enrollment_id)
+@permission_classes([IsAuthenticated])
+def student_heartbeat(request):
+    """
+    Handle student heartbeat using JWT authentication
+    """
+    enrollment = get_enrollment_for_user(request.user)
+    if not enrollment:
+        return Response({"error": "Enrollment not found"}, status=404)
 
-            # Resume if paused
-            if e.is_paused:
-                e.is_paused = False
-                e.status = "active"
-                e.save(update_fields=["is_paused", "status"])
+    with transaction.atomic():
+        e = StudentExamEnrollment.objects.select_for_update().get(id=enrollment.id)
+        if e.status not in ["active", "inactive", "paused"]:
+            return Response(
+                {"error": "Exam session has ended", "status": e.status},
+                status=400,
+            )
 
-                # Use new resume task instead of manual calculation
-                from appExam.tasks import resume_student
-                resume_student.delay(enrollment_id)
+        was_paused = e.is_paused
+        current_time = timezone.now()
+        actually_resumed = False
+        pause_duration = timedelta(0)
 
-            # Update activity timestamp
-            e.last_activity = timezone.now()
-            e.save(update_fields=["last_activity"])
+        # Update last activity
+        e.last_activity = current_time
 
-        # Fetch events
-        ev = redis_client.get(f"exam_event_{enrollment_id}")
-        events = [json.loads(ev)] if ev else []
-        redis_client.delete(f"exam_event_{enrollment_id}") if ev else None
+        # Resume logic
+        if was_paused and e.pause_started_at:
+            pause_duration = max(timedelta(0), current_time - e.pause_started_at)
+            e.total_pause_duration = (
+                e.total_pause_duration or timedelta(0)
+            ) + pause_duration
+            e.is_paused = False
+            e.pause_started_at = None
+            e.status = "active"
+            actually_resumed = True
 
-        return Response({
-            "heartbeat": timezone.now().isoformat(),
+            if e.effective_time_remaining.total_seconds() > 0:
+                schedule_student_expiry(e)
+            else:
+                e.status = "submitted"
+
+        # Save
+        save_fields = ["last_activity"]
+        if was_paused:
+            save_fields += [
+                "is_paused",
+                "pause_started_at",
+                "total_pause_duration",
+                "status",
+            ]
+        e.save(update_fields=save_fields)
+
+        # Redis events
+        events = []
+        event_key = f"exam_event_{e.id}"
+        ev = redis_client.get(event_key)
+        if ev:
+            events.append(json.loads(ev))
+            redis_client.delete(event_key)
+        if actually_resumed:
+            events.append(
+                {
+                    "type": "exam_resumed",
+                    "timestamp": current_time.isoformat(),
+                    "pause_duration": pause_duration.total_seconds(),
+                },
+            )
+
+    return Response(
+        {
+            "heartbeat": current_time.isoformat(),
             "events": events,
             "action_required": "handle_events" if events else "none",
-            # Add effective time remaining
             "time_remaining": e.effective_time_remaining.total_seconds(),
-        })
-    except StudentExamEnrollment.DoesNotExist:
-        return Response({"error": "Enrollment not found"}, status=404)
+            "status": e.status,
+            "was_resumed": actually_resumed,
+        },
+    )
 
 
-# ------------------------------ student exam status live ------------------------------
 @api_view(["GET"])
-def get_exam_status(request, enrollment_id):
+@permission_classes([IsAuthenticated])
+def get_exam_status(request):
+    """
+    Get current exam status for authenticated user
+    """
     try:
-        e = StudentExamEnrollment.objects.select_related("session").get(id=enrollment_id)  # noqa: E501
-
-        # Use effective time calculation
-        status = "paused" if e.is_paused else e.status
-        rem = e.effective_time_remaining.total_seconds() if status == "active" else 0
-
-        # Add session pause state
-        session_paused = e.session.pause_started_at is not None
-
-        payload = {
-            "status": status,
-            "time_remaining": rem,
-            "session_paused": session_paused,
-            "last_activity": e.last_activity.isoformat() if e.last_activity else None,
-        }
-
-        # Fetch events
-        ev = redis_client.get(f"exam_event_{enrollment_id}")
-        if ev:
-            payload["last_event"] = json.loads(ev)
-
-        return Response(payload)
+        e = StudentExamEnrollment.objects.select_related("session").get(
+            student=request.user,
+        )
     except StudentExamEnrollment.DoesNotExist:
         return Response({"error": "Enrollment not found"}, status=404)
+
+    # Status logic
+    if e.is_paused:
+        status = "paused"
+    elif e.session.pause_started_at:
+        status = "session_paused"
+    else:
+        status = e.status
+
+    time_remaining = 0
+    if status in ["active", "paused"]:
+        time_remaining = max(0, e.effective_time_remaining.total_seconds())
+
+    inactive_threshold = timezone.now() - timedelta(seconds=90)
+    is_inactive = bool(
+        e.last_activity and status == "active" and e.last_activity < inactive_threshold,
+    )
+
+    payload = {
+        "status": status,
+        "time_remaining": time_remaining,
+        "is_inactive": is_inactive,
+        "session_paused": bool(e.session.pause_started_at),
+        "student_paused": e.is_paused,
+        "last_activity": e.last_activity.isoformat() if e.last_activity else None,
+        "total_pause_duration": (
+            e.total_pause_duration or timedelta(0)
+        ).total_seconds(),
+    }
+
+    # Redis last event
+    ev = redis_client.get(f"exam_event_{e.id}")
+    if ev:
+        payload["last_event"] = json.loads(ev)
+
+    return Response(payload)
+
+
+# Helper function that could be added to the model
+def schedule_student_expiry(enrollment):
+    """
+    Helper function to schedule student exam expiry
+    Returns True if scheduled successfully, False otherwise
+    """
+    try:
+        remaining_time = enrollment.effective_time_remaining
+
+        if remaining_time.total_seconds() <= 0:
+            return False
+
+        # Cancel existing task
+        current_app.control.revoke(f"expire_exam_{enrollment.id}", terminate=True)
+
+        # Schedule new task
+        expire_student_exam.apply_async(
+            args=(enrollment.id,),
+            countdown=remaining_time.total_seconds(),
+            task_id=f"expire_exam_{enrollment.id}",
+        )
+        return True  # noqa: TRY300
+
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to schedule expiry for enrollment {enrollment.id}: {e}")  # noqa: G004, TRY400
+        return False

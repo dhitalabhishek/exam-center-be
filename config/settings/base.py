@@ -401,3 +401,11 @@ JAZZMIN_SETTINGS = {
     "hide_apps": ["account", "authtoken", "mfa", "sites"],
     "show_ui_builder": True,
 }
+
+
+CELERY_BEAT_SCHEDULE = {
+    "exam_monitor": {
+        "task": "appExam.tasks.exam_monitor",
+        "schedule": 60.0,  # Runs every minute
+    },
+}
