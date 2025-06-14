@@ -5,9 +5,6 @@ from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.forms import CharField
-from django.forms import ModelChoiceField
-from django.forms import Textarea
 from django.http import HttpResponseRedirect
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -54,7 +51,6 @@ admin.site.register(StudentAnswer)
 #         )
 
 
-
 class EnrollmentRangeForm(forms.Form):
     def __init__(self, session_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -66,9 +62,12 @@ class EnrollmentRangeForm(forms.Form):
         self.fields["range_string"] = forms.CharField(
             label="Symbol Number Range",
             max_length=500,
-            widget=forms.TextInput(attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"}),
+            widget=forms.TextInput(
+                attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"},
+            ),
             help_text="Enter comma-separated ranges or individual symbols.",
         )
+
 
 # admin.site.register(HallAndStudentAssignment)
 
@@ -92,7 +91,9 @@ def enroll_students_view(request, session_id):
 
             # Get or create hall assignment
             hall_assignment, created = HallAndStudentAssignment.objects.get_or_create(
-                session=session, hall=hall, defaults={"roll_number_range": range_string},
+                session=session,
+                hall=hall,
+                defaults={"roll_number_range": range_string},
             )
 
             # If already exists, update range
@@ -154,14 +155,36 @@ class ExamSessionAdmin(admin.ModelAdmin):
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
-    readonly_fields = ("enroll_students_link", "duration")
+
+    # Only expected fields editable: start_time, end_time, status
+    readonly_fields = (
+        "enroll_students_link",
+        "duration",
+        "expected_end_time",
+        "pause_started_at",
+        "total_pause_duration",
+        "updated_at",
+        "created_at",
+    )
+    fields = (
+        "exam",
+        "start_time",
+        "end_time",
+        "status",
+        "expected_end_time",
+        "pause_started_at",
+        "total_pause_duration",
+        "enroll_students_link",
+        "duration",
+        "updated_at",
+        "created_at",
+    )
 
     def enroll_students_link(self, obj):
-        """Add a link to enroll students for this session"""
         if obj.pk:
             url = reverse("admin:enroll_students", args=[obj.pk])
             return format_html(
-                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',  # noqa: E501
+                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',
                 url,
             )
         return "Save the session first"
@@ -169,7 +192,6 @@ class ExamSessionAdmin(admin.ModelAdmin):
     enroll_students_link.short_description = "Quick Actions"
 
     def get_urls(self):
-        """Add custom URL for enrollment view"""
         urls = super().get_urls()
         custom_urls = [
             path(
@@ -183,10 +205,44 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
 @admin.register(StudentExamEnrollment)
 class StudentExamEnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "session", "time_remaining")
+    list_display = (
+        "candidate",
+        "session",
+        "status",
+        "time_remaining",
+        "effective_time_remaining",
+    )
     list_filter = ("session__status", "hall_assignment__hall")
     list_per_page = 10
-    readonly_fields = ("candidate", "session", "hall_assignment")
+
+    readonly_fields = (
+        "candidate",
+        "session",
+        "last_activity",
+        "updated_at",
+        "created_at",
+    )
+    # Fields editable for admins
+    fields = (
+        "candidate",
+        "session",
+        "status",
+        "hall_assignment",
+        "time_remaining",
+        "question_order",
+        "answer_order",
+        "is_paused",
+        "pause_started_at",
+        "total_pause_duration",
+        "last_activity",
+        "updated_at",
+        "created_at",
+    )
+
+    def effective_time_remaining(self, obj):
+        return obj.effective_time_remaining
+
+    effective_time_remaining.short_description = "Effective Time Remaining"
 
     def has_add_permission(self, request):
         # Disable manual addition - should be done through the enrollment task

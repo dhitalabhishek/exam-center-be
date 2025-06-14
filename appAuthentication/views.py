@@ -126,7 +126,7 @@ def candidate_login_view(request):
     tokens = get_tokens_for_user(user)
     access_token = tokens["access"]
 
-    data = build_candidate_login_payload(candidate, access_token)
+    data = build_candidate_login_payload(candidate, access_token, enrollment)
     return Response({"data": data, "message": "Success", "error": None, "status": 200})
 
 
@@ -165,18 +165,11 @@ def randomize_questions_and_answers_for_enrollment(enrollment):
     enrollment.answer_order = answer_order
 
 
-def build_candidate_login_payload(candidate, access_token):
+def build_candidate_login_payload(candidate, access_token,enrollment):
     """
     Build the response payload for successful candidate login.
     """
     try:
-        enrollment = StudentExamEnrollment.objects.select_related(
-            "session",
-            "session__exam",
-            "session__exam__program",
-            "hall_assignment",
-            "hall_assignment__hall",
-        ).get(candidate=candidate)
 
         exam = enrollment.session.exam
         session = enrollment.session

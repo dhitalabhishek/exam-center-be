@@ -1,10 +1,10 @@
 # appExam/models.py
 from datetime import timedelta
-from datetime import timezone
 
 from ckeditor.fields import RichTextField
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from appAuthentication.models import Candidate
 from appInstitutions.models import Program
@@ -57,7 +57,7 @@ class ExamSession(models.Model):
 
     pause_started_at = models.DateTimeField(null=True, blank=True)
     total_pause_duration = models.DurationField(default=timedelta(0))
-    expected_end_time = models.DateTimeField(null=True)  # Original end time
+    expected_end_time = models.DateTimeField(null=True, blank=True)
 
     notice = RichTextField(
         blank=True,
@@ -205,6 +205,7 @@ class StudentExamEnrollment(models.Model):
     is_paused = models.BooleanField(default=False)
     pause_started_at = models.DateTimeField(null=True, blank=True)
     total_pause_duration = models.DurationField(default=timedelta(0))
+    last_activity = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
