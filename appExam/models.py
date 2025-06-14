@@ -79,8 +79,9 @@ class ExamSession(models.Model):
         ]
 
     def __str__(self):
+        local_start = timezone.localtime(self.start_time)
         halls = " ".join(f"{ha.hall.name}," for ha in self.hall_assignments.all())
-        return f"{self.exam} at {self.start_time.strftime('%Y-%m-%d %H:%M')} in {halls}"
+        return f"{self.exam} at {local_start.strftime('%Y-%m-%d %H:%M')} in {halls}"
 
     def save(self, *args, **kwargs):
         # Set expected_end_time on first save
@@ -123,7 +124,10 @@ class HallAndStudentAssignment(models.Model):
         exam_name = f"{exam.program.name}"
         if exam.subject:
             exam_name += f" - {exam.subject.name}"
-        date_str = self.session.start_time.strftime("%Y-%m-%d %H:%M")
+
+        local_start = timezone.localtime(self.session.start_time)
+        date_str = local_start.strftime("%Y-%m-%d %H:%M")
+
         return f"{exam_name} on {date_str} at {self.hall.name}"
 
 
@@ -158,7 +162,7 @@ class Answer(models.Model):
 
 class StudentExamEnrollment(models.Model):
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE)
-    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+    session = models.ForeignKey("ExamSession", on_delete=models.CASCADE)
 
     status = models.CharField(
         max_length=20,
@@ -171,7 +175,7 @@ class StudentExamEnrollment(models.Model):
     )
 
     hall_assignment = models.ForeignKey(
-        HallAndStudentAssignment,
+        "HallAndStudentAssignment",
         on_delete=models.CASCADE,
         null=True,
     )
@@ -192,52 +196,104 @@ class StudentExamEnrollment(models.Model):
         ),
     )
 
-    # We no longer store student_answers here;
-    # instead we use a separate StudentAnswer model
+    # Total time allocated for this student
     time_remaining = models.DurationField(
         default=timedelta(minutes=60),
-        help_text="Time remaining for this student in the exam session.",
+        help_text="Total time allocated for this student in the exam session.",
     )
 
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
+    present = models.BooleanField(
+        default=False,
+        help_text="Is student currently connected via WebSocket?",
+    )
+
+    # Timer tracking fields
     is_paused = models.BooleanField(default=False)
-    pause_started_at = models.DateTimeField(null=True, blank=True)
-    total_pause_duration = models.DurationField(default=timedelta(0))
-    last_activity = models.DateTimeField(null=True, blank=True)
+    active_exam_time_used = models.DurationField(default=timedelta(0))
+    last_active_timestamp = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
 
     @property
     def effective_time_remaining(self):
-        if not self.session.start_time or not self.time_remaining:
+        """Calculate remaining time accounting for real-time usage"""
+        if not self.time_remaining:
             return timedelta(0)
 
-        now = timezone.now()
-        elapsed_time = now - self.session.start_time
+        total_used = self.active_exam_time_used
 
-        # Calculate total pauses (student + session)
-        total_pauses = timedelta(0)
+        # Only count active time if present and not paused
+        if self.present and not self.is_paused and self.last_active_timestamp:
+            current_session_time = timezone.now() - self.last_active_timestamp
+            total_used += current_session_time
 
-        # 1. Session-level pauses
-        if self.session.total_pause_duration:
-            total_pauses += self.session.total_pause_duration
-        if self.session.pause_started_at:
-            total_pauses += now - self.session.pause_started_at
-
-        # 2. Student-level pauses
-        if self.total_pause_duration:
-            total_pauses += self.total_pause_duration
-        if self.is_paused and self.pause_started_at:
-            total_pauses += now - self.pause_started_at
-
-        # CORRECTED CALCULATION
-        active_time_used = elapsed_time - total_pauses
-        remaining = self.time_remaining - active_time_used
-
+        remaining = self.time_remaining - total_used
         return max(remaining, timedelta(0))
+
+    def get_current_active_time_used(self):
+        """Get total active time used including current session if active"""
+        total_used = self.active_exam_time_used
+
+        if not self.is_paused and self.last_active_timestamp:
+            current_session_time = timezone.now() - self.last_active_timestamp
+            total_used += current_session_time
+
+        return total_used
+
+    def start_exam_timer(self):
+        """Call when student becomes active"""
+        if not self.is_paused and not self.last_active_timestamp:
+            self.last_active_timestamp = timezone.now()
+            # Don't auto-save here, let caller decide what fields to save
+
+    def pause_exam_timer(self):
+        """Call when pausing student"""
+        if not self.is_paused and self.last_active_timestamp:
+            # Add active time before pausing
+            active_duration = timezone.now() - self.last_active_timestamp
+            self.active_exam_time_used += active_duration
+            self.is_paused = True
+            self.last_active_timestamp = None
+            self.save(
+                update_fields=[
+                    "active_exam_time_used",
+                    "is_paused",
+                    "last_active_timestamp",
+                ],
+            )
+
+    def resume_exam_timer(self):
+        """Call when resuming student"""
+        if self.is_paused:
+            self.is_paused = False
+            self.last_active_timestamp = timezone.now()
+            self.save(update_fields=["is_paused", "last_active_timestamp"])
+
+    def stop_exam_timer(self):
+        """Call when exam ends/submits"""
+        if not self.is_paused and self.last_active_timestamp:
+            # Add final active time
+            active_duration = timezone.now() - self.last_active_timestamp
+            self.active_exam_time_used += active_duration
+            self.last_active_timestamp = None
+            self.save(update_fields=["active_exam_time_used", "last_active_timestamp"])
+
+    def get_detailed_status(self):
+        """Get detailed status information for debugging."""
+        return {
+            "status": self.status,
+            "is_paused": self.is_paused,
+            "time_remaining": self.time_remaining.total_seconds(),
+            "active_time_used": self.get_current_active_time_used().total_seconds(),
+            "effective_time_remaining": self.effective_time_remaining.total_seconds(),
+            "last_active_timestamp": self.last_active_timestamp.isoformat()
+            if self.last_active_timestamp
+            else None,
+        }
 
 
 class StudentAnswer(models.Model):

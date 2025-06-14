@@ -11,124 +11,64 @@ from appExam.models import ExamSession
 from appExam.models import StudentExamEnrollment
 
 redis_client = get_redis_client()
+
+# Constants
 REDIS_KEY_PREFIX = "exam_task_last_run:"
-SESSION_COMPLETION_CHECK_INTERVAL = 300  # seconds
 SESSION_COMPLETION_BUFFER = 60  # seconds grace period after effective end
 
 
 @shared_task
 def exam_monitor():
-    """Central task that coordinates all exam checks"""
-    now = timezone.now()
-
-    # Check session activation every minute
+    """Central task that coordinates all exam checks."""
     activate_and_schedule_expiry.delay()
-
-    # Check session completion every SESSION_COMPLETION_CHECK_INTERVAL seconds
-    last_run = redis_client.get(REDIS_KEY_PREFIX + "check_session_completion")
-    last_ts = 0.0
-    if last_run:
-        raw = last_run.decode()
-        try:
-            last_ts = float(raw)
-        except ValueError:
-            # fallback to ISO format parsing
-            try:
-                last_dt = timezone.datetime.fromisoformat(raw)
-                # Assuming ISO string may not be timezone-aware
-                if timezone.is_naive(last_dt):
-                    last_dt = timezone.make_aware(last_dt)
-                last_ts = last_dt.timestamp()
-            except Exception:
-                last_ts = 0.0
-    # schedule completion check if interval passed
-    if now.timestamp() - last_ts >= SESSION_COMPLETION_CHECK_INTERVAL:
-        check_session_completion.delay()
-        # store as timestamp
-        redis_client.set(
-            REDIS_KEY_PREFIX + "check_session_completion",
-            str(now.timestamp()),
-        )
+    check_student_connections.delay()
+    check_session_completion.delay()
 
 
 @shared_task
-def activate_and_schedule_expiry():
-    """Activate scheduled sessions and schedule expiry tasks"""
-    now = timezone.now()
-    activated_count = 0
+def check_student_connections():
+    """Clear out any enrollments marked present but idle for >1 minute."""
+    timeout = timedelta(minutes=1)
+    cutoff = timezone.now() - timeout
 
-    # Lock scheduled sessions to avoid double activation
-    with transaction.atomic():
-        sessions = ExamSession.objects.select_for_update(skip_locked=True).filter(
-            status="scheduled", start_time__lte=now,
-        )
-        for session in sessions:
-            session.status = "ongoing"
-            session.expected_end_time = session.end_time
-            session.save(update_fields=["status", "expected_end_time"])
-
-            enrollments = session.studentexamenrollment_set.filter(status="inactive")
-            for e in enrollments:
-                # mark student active
-                e.status = "active"
-                e.save(update_fields=["status"])
-
-                # revoke any existing expiry
-                current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
-
-                # schedule new expiry
-                effective_end = session.expected_end_time + (
-                    session.total_pause_duration or timedelta(0)
-                )
-                task_id = f"expire_exam_{e.id}_{int(effective_end.timestamp())}"
-                expire_student_exam.apply_async(
-                    args=(e.id,),
-                    eta=effective_end,
-                    task_id=task_id,
-                )
-            activated_count += 1
-    return f"Activated {activated_count} sessions"
+    ghosts = StudentExamEnrollment.objects.filter(
+        present=True, last_active_timestamp__lt=cutoff,
+    )
+    for e in ghosts:
+        e.present = False
+        if e.status == "active" and not e.is_paused:
+            e.pause_exam_timer()
+        e.save(update_fields=["present", "is_paused", "active_exam_time_used"])
+    return f"Cleaned {ghosts.count()} ghost connections"
 
 
 @shared_task
 def check_session_completion():
-    """Mark sessions as completed when all students finish"""
+    """Complete any sessions whose end_time has passed and no present students remain."""  # noqa: E501
     now = timezone.now()
     completed_count = 0
 
     sessions = ExamSession.objects.filter(status="ongoing")
     for session in sessions:
-        eff_end = session.effective_end_time
-        # require after grace period
-        if eff_end and now >= eff_end + timedelta(seconds=SESSION_COMPLETION_BUFFER):
-            # all submitted?
-            if not session.studentexamenrollment_set.exclude(
-                status="submitted",
-            ).exists():
+        if session.end_time and now >= session.end_time + timedelta(
+            seconds=SESSION_COMPLETION_BUFFER,
+        ):
+            # only consider students both active and still connected
+            still_running = session.studentexamenrollment_set.filter(
+                status="active", present=True,
+            ).exists()
+
+            if not still_running:
                 session.status = "completed"
                 session.save(update_fields=["status"])
                 completed_count += 1
+
     return f"Completed {completed_count} sessions"
 
 
 @shared_task
-def expire_student_exam(enroll_id):
-    """Submit exam accounting for pause state"""
-    try:
-        e = StudentExamEnrollment.objects.get(id=enroll_id)
-    except StudentExamEnrollment.DoesNotExist:
-        return
-
-    if e.status == "active" and not e.is_paused:
-        e.status = "submitted"
-        e.save(update_fields=["status"])
-        payload = {"type": "exam_expired", "timestamp": timezone.now().isoformat()}
-        redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
-
-
-@shared_task
 def halt_exam_session(session_id, reason="admin_request"):
-    """Halt exam session with pause handling"""
+    """Halt exam session with pause handling."""
     enrollments = StudentExamEnrollment.objects.filter(
         session_id=session_id,
         status="active",
@@ -136,75 +76,113 @@ def halt_exam_session(session_id, reason="admin_request"):
     for e in enrollments:
         current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
         e.status = "submitted"
-        e.save(update_fields=["status"])
+        e.present = False
+        e.save(update_fields=["status", "present"])
+
         payload = {
             "type": "session_halted",
             "reason": reason,
             "timestamp": timezone.now().isoformat(),
         }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
+
     ExamSession.objects.filter(id=session_id).update(status="cancelled")
 
 
 @shared_task
-def pause_exam_session(session_id):
-    """Pause entire exam session"""
-    session = ExamSession.objects.get(id=session_id)
-    session.pause_started_at = timezone.now()
-    session.save(update_fields=["pause_started_at"])
+def activate_and_schedule_expiry():
+    """Activate scheduled sessions and schedule expiry tasks."""
+    now = timezone.now()
+    activated_count = 0
 
+    with transaction.atomic():
+        sessions = ExamSession.objects.select_for_update(skip_locked=True).filter(
+            status="scheduled",
+            start_time__lte=now,
+        )
+        for session in sessions:
+            session.status = "ongoing"
+            session.save(update_fields=["status"])
+
+            enrollments = session.studentexamenrollment_set.filter(status="inactive")
+            for e in enrollments:
+                e.status = "active"
+                e.present = False  # students haven't connected yet
+                e.start_exam_timer()
+                e.save(update_fields=["status", "present"])
+
+                # Schedule expiry based on individual student's time_remaining
+                expire_student_exam.apply_async(
+                    args=(e.id,),
+                    countdown=e.time_remaining.total_seconds(),
+                    task_id=f"expire_exam_{e.id}",
+                )
+
+            activated_count += 1
+
+    return f"Activated {activated_count} sessions"
+
+
+@shared_task
+def pause_exam_session(session_id):
+    """Pause entire exam session."""
+    session = ExamSession.objects.get(id=session_id)
     enrollments = session.studentexamenrollment_set.filter(status="active")
+
     for e in enrollments:
         current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
-        if not e.is_paused:
-            e.is_paused = True
-            e.pause_started_at = timezone.now()
-            e.save(update_fields=["is_paused", "pause_started_at"])
+        e.pause_exam_timer()
 
-    for e in enrollments:
-        payload = {"type": "exam_paused", "timestamp": timezone.now().isoformat()}
+        payload = {
+            "type": "exam_paused",
+            "timestamp": timezone.now().isoformat(),
+        }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
 
 
 @shared_task
 def resume_exam_session(session_id):
-    """Resume paused exam session"""
+    """Resume paused exam session."""
     session = ExamSession.objects.get(id=session_id)
-    if session.pause_started_at:
-        now = timezone.now()
-        pause_dur = now - session.pause_started_at
-        session.total_pause_duration += pause_dur
-        session.pause_started_at = None
-        session.end_time = session.expected_end_time + session.total_pause_duration
-        session.save(
-            update_fields=["pause_started_at", "total_pause_duration", "end_time"],
-        )
-
     enrollments = session.studentexamenrollment_set.filter(
         status="active",
         is_paused=True,
     )
-    for e in enrollments:
-        if e.pause_started_at:
-            now = timezone.now()
-            pd = now - e.pause_started_at
-            e.total_pause_duration += pd
-            e.is_paused = False
-            e.pause_started_at = None
-            e.save(
-                update_fields=["is_paused", "pause_started_at", "total_pause_duration"],
-            )
 
-        remaining = session.end_time - timezone.now()
-        if remaining.total_seconds() > 0:
-            current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
-            task_id = (
-                f"expire_exam_{e.id}_{int((timezone.now() + remaining).timestamp())}"
-            )
+    for e in enrollments:
+        e.resume_exam_timer()
+
+        remaining_seconds = e.effective_time_remaining.total_seconds()
+        if remaining_seconds > 0:
             expire_student_exam.apply_async(
                 args=(e.id,),
-                countdown=remaining.total_seconds(),
-                task_id=task_id,
+                countdown=remaining_seconds,
+                task_id=f"expire_exam_{e.id}",
             )
-        payload = {"type": "exam_resumed", "timestamp": timezone.now().isoformat()}
+
+        payload = {
+            "type": "exam_resumed",
+            "timestamp": timezone.now().isoformat(),
+        }
+        redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
+
+
+@shared_task
+def expire_student_exam(enroll_id):
+    """Submit exam when time expires and clear present flag."""
+    try:
+        e = StudentExamEnrollment.objects.get(id=enroll_id)
+    except StudentExamEnrollment.DoesNotExist:
+        return
+
+    if e.status == "active":
+        e.stop_exam_timer()
+        e.status = "submitted"
+        e.present = False
+        e.save(update_fields=["status", "present"])
+
+        payload = {
+            "type": "exam_expired",
+            "timestamp": timezone.now().isoformat(),
+        }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))

@@ -1,5 +1,4 @@
 import json
-from datetime import timedelta
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -12,7 +11,7 @@ REDIS_EVENT_TTL = 60
 
 
 class ExamStatusConsumer(AsyncWebsocketConsumer):
-    """WebSocket consumer for real-time exam status updates."""
+    """WebSocket consumer for on-demand exam status updates."""
 
     async def connect(self):
         self.user = self.scope["user"]
@@ -36,7 +35,7 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             return
 
         message_type = data.get("type")
-        if message_type == "get_status":
+        if message_type == "status_update":
             await self.send_current_status()
         elif message_type == "ping":
             await self.send_json({"type": "pong"})
@@ -44,6 +43,7 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             await self.send_error(f"Unknown message type: {message_type}")
 
     async def mark_student_active(self):
+        """Mark student as active (present) and handle resume logic."""
         try:
             await database_sync_to_async(self._mark_active_sync)()
         except Exception as e:
@@ -62,33 +62,48 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
         except StudentExamEnrollment.DoesNotExist:
             return
 
+        # --- NEW: mark present ---
+        enrollment.present = True
+        enrollment.save(update_fields=["present"])
+
         current_time = timezone.now()
         was_paused = enrollment.is_paused
-        enrollment.last_activity = current_time
 
-        if was_paused and enrollment.pause_started_at:
-            pause_duration = current_time - enrollment.pause_started_at
-            enrollment.total_pause_duration = (
-                enrollment.total_pause_duration or timedelta()
-            ) + pause_duration
-            enrollment.is_paused = False
-            enrollment.pause_started_at = None
-
-            if enrollment.effective_time_remaining.total_seconds() > 0:
+        # Handle resume from pause
+        if was_paused:
+            enrollment.resume_exam_timer()
+            remaining_seconds = enrollment.effective_time_remaining.total_seconds()
+            if remaining_seconds > 0:
                 expire_student_exam.apply_async(
                     args=(enrollment.id,),
-                    countdown=enrollment.effective_time_remaining.total_seconds(),
+                    countdown=remaining_seconds,
                     task_id=f"expire_exam_{enrollment.id}",
                 )
             else:
+                enrollment.stop_exam_timer()
                 enrollment.status = "submitted"
+                enrollment.save(update_fields=["status"])
+                return
 
-        # Always mark active if currently inactive
-        if enrollment.status == "inactive":
+        # Handle activation from inactive state
+        elif enrollment.status == "inactive":
             enrollment.status = "active"
+            enrollment.start_exam_timer()
+            enrollment.save(update_fields=["status", "last_active_timestamp"])
+            remaining_seconds = enrollment.effective_time_remaining.total_seconds()
+            if remaining_seconds > 0:
+                expire_student_exam.apply_async(
+                    args=(enrollment.id,),
+                    countdown=remaining_seconds,
+                    task_id=f"expire_exam_{enrollment.id}",
+                )
 
-        enrollment.save()
+        # Ensure timestamp if missing
+        elif enrollment.status == "active" and not enrollment.last_active_timestamp:
+            enrollment.last_active_timestamp = current_time
+            enrollment.save(update_fields=["last_active_timestamp"])
 
+        # Queue resume event
         if was_paused:
             redis_client = get_redis_client()
             redis_client.setex(
@@ -100,10 +115,11 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             )
 
     async def mark_student_inactive(self):
+        """Mark student as inactive (paused) and clear present flag."""
         try:
             await database_sync_to_async(self._mark_inactive_sync)()
         except Exception:
-            pass  # Don't raise errors on disconnect
+            pass
 
     def _mark_inactive_sync(self):
         from celery import current_app
@@ -112,19 +128,19 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
         from appExam.models import StudentExamEnrollment
 
         try:
-            enrollment = StudentExamEnrollment.objects.select_for_update().get(
-                candidate=self.user.candidate_profile,
-            )
+            with transaction.atomic():
+                enrollment = StudentExamEnrollment.objects.select_for_update().get(
+                    candidate=self.user.candidate_profile,
+                )
         except StudentExamEnrollment.DoesNotExist:
             return
 
+        # --- NEW: clear present ---
+        enrollment.present = False
+
         if enrollment.status == "active" and not enrollment.is_paused:
-            enrollment.is_paused = True
-            enrollment.pause_started_at = timezone.now()
-            enrollment.save(update_fields=["is_paused", "pause_started_at"])
-
+            enrollment.pause_exam_timer()
             current_app.control.revoke(f"expire_exam_{enrollment.id}", terminate=True)
-
             redis_client = get_redis_client()
             redis_client.setex(
                 f"exam_event_{enrollment.id}",
@@ -136,6 +152,8 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
                     },
                 ),
             )
+
+        enrollment.save(update_fields=["present", "is_paused", "active_exam_time_used"])
 
     async def send_initial_status(self):
         """Send initial exam status on connection."""
@@ -159,7 +177,7 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             await self.send_error(f"Failed to get initial status: {e!s}")
 
     async def send_current_status(self):
-        """Send current exam status."""
+        """Send current exam status on client request."""
         try:
             enrollment = await self.get_user_enrollment()
             if not enrollment:
@@ -202,28 +220,30 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_exam_status(self, enrollment, current_time):
-        """Build exam status response."""
+        enrollment.refresh_from_db()
+        time_remaining_seconds = max(
+            0, enrollment.effective_time_remaining.total_seconds(),
+        )
+        current_active_time_used = (
+            enrollment.get_current_active_time_used().total_seconds()
+        )
+
         return {
             "status": enrollment.status,
             "is_paused": enrollment.is_paused,
-            "time_remaining": enrollment.effective_time_remaining.total_seconds(),
+            "time_remaining": time_remaining_seconds,
             "session_id": enrollment.session.id,
-            "last_activity": timezone.localtime(enrollment.last_activity).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )  # noqa: E501
-            if enrollment.last_activity
+            "active_time_used": current_active_time_used,
+            "total_time_allocated": enrollment.time_remaining.total_seconds(),
+            "last_active_timestamp": timezone.localtime(
+                enrollment.last_active_timestamp,
+            ).strftime("%Y-%m-%d %H:%M:%S")
+            if enrollment.last_active_timestamp
             else None,
         }
 
     async def send_error(self, message: str):
-        """Send error message to client."""
-        await self.send_json(
-            {
-                "type": "error",
-                "message": message,
-            },
-        )
+        await self.send_json({"type": "error", "message": message})
 
     async def send_json(self, data: dict):
-        """Send JSON message to client."""
         await self.send(text_data=json.dumps(data))

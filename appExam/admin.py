@@ -20,6 +20,9 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from appCore.tasks import pause_exam_session
+from appCore.tasks import resume_exam_session
+
 from .forms import DocumentUploadForm
 from .models import Answer
 from .models import Exam
@@ -32,23 +35,6 @@ from .models import StudentExamEnrollment
 from .tasks import enroll_students_by_symbol_range
 
 admin.site.register(StudentAnswer)
-
-
-# Custom form for range enrollment
-# class EnrollmentRangeForm(Form):
-#     range_string = CharField(
-#         max_length=200,
-#         help_text="Enter range like '13-A1-PT - 14-C2-GM' or single symbol '17-A6-12'",
-#         widget=Textarea(attrs={"rows": 3, "cols": 50}),
-#     )
-
-#     def __init__(self, session_id, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         # Filter hall assignments for this session
-#         self.fields["hall_assignment"] = ModelChoiceField(
-#             queryset=HallAndStudentAssignment.objects.filter(session_id=session_id),
-#             help_text="Select which hall assignment this range applies to",
-#         )
 
 
 class EnrollmentRangeForm(forms.Form):
@@ -67,9 +53,6 @@ class EnrollmentRangeForm(forms.Form):
             ),
             help_text="Enter comma-separated ranges or individual symbols.",
         )
-
-
-# admin.site.register(HallAndStudentAssignment)
 
 
 # Custom admin view for enrolling students
@@ -151,12 +134,12 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "status",
         "enroll_students_link",
         "duration",
+        "pause_resume_button",  # Add session control button
     )
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
 
-    # Only expected fields editable: start_time, end_time, status
     readonly_fields = (
         "enroll_students_link",
         "duration",
@@ -165,6 +148,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "total_pause_duration",
         "updated_at",
         "created_at",
+        "session_controls",  # Add control in detail view
     )
     fields = (
         "exam",
@@ -176,9 +160,31 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "total_pause_duration",
         "enroll_students_link",
         "duration",
+        "session_controls",  # Controls in change view
         "updated_at",
         "created_at",
     )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<int:session_id>/enroll-students/",
+                self.admin_site.admin_view(enroll_students_view),
+                name="enroll_students",
+            ),
+            path(
+                "<path:object_id>/pause/",
+                self.admin_site.admin_view(self.pause_session),
+                name="exam_session_pause",
+            ),
+            path(
+                "<path:object_id>/resume/",
+                self.admin_site.admin_view(self.resume_session),
+                name="exam_session_resume",
+            ),
+        ]
+        return custom_urls + urls
 
     def enroll_students_link(self, obj):
         if obj.pk:
@@ -191,16 +197,37 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
     enroll_students_link.short_description = "Quick Actions"
 
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                "<int:session_id>/enroll-students/",
-                self.admin_site.admin_view(enroll_students_view),
-                name="enroll_students",
-            ),
-        ]
-        return custom_urls + urls
+    def pause_session(self, request, object_id):
+        session = get_object_or_404(ExamSession, pk=object_id)
+        pause_exam_session.delay(session.id)
+        self.message_user(request, "Exam session pause initiated")
+        return HttpResponseRedirect("../../")
+
+    def resume_session(self, request, object_id):
+        session = get_object_or_404(ExamSession, pk=object_id)
+        resume_exam_session.delay(session.id)
+        self.message_user(request, "Exam session resume initiated")
+        return HttpResponseRedirect("../../")
+
+    def pause_resume_button(self, obj):
+        if obj.status != "ongoing":
+            return format_html('<span class="button disabled">Not Active</span>')
+        if obj.pause_started_at:
+            return format_html(
+                '<a class="button" href="{}" style="color: white; background: #28a745; padding: 5px 10px; text-decoration: none; border-radius: 3px;">▶ Resume</a>',
+                reverse("admin:exam_session_resume", args=[obj.id]),
+            )
+        return format_html(
+            '<a class="button" href="{}" style="color: white; background: #dc3545; padding: 5px 10px; text-decoration: none; border-radius: 3px;">⏸ Pause</a>',
+            reverse("admin:exam_session_pause", args=[obj.id]),
+        )
+
+    pause_resume_button.short_description = "Session Control"
+
+    def session_controls(self, obj):
+        return self.pause_resume_button(obj)
+
+    session_controls.short_description = "Controls"
 
 
 @admin.register(StudentExamEnrollment)
@@ -209,7 +236,6 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "candidate",
         "session",
         "status",
-        "time_remaining",
         "effective_time_remaining",
     )
     list_filter = ("session__status", "hall_assignment__hall")
@@ -218,7 +244,7 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
     readonly_fields = (
         "candidate",
         "session",
-        "last_activity",
+        "last_active_timestamp",
         "updated_at",
         "created_at",
     )
@@ -228,13 +254,10 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "session",
         "status",
         "hall_assignment",
-        "time_remaining",
         "question_order",
         "answer_order",
         "is_paused",
-        "pause_started_at",
-        "total_pause_duration",
-        "last_activity",
+        "last_active_timestamp",
         "updated_at",
         "created_at",
     )
