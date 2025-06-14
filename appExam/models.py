@@ -212,30 +212,32 @@ class StudentExamEnrollment(models.Model):
 
     @property
     def effective_time_remaining(self):
-        """Calculate time remaining with pauses"""
         if not self.session.start_time or not self.time_remaining:
             return timedelta(0)
 
-        base_remaining = self.time_remaining
         now = timezone.now()
+        elapsed_time = now - self.session.start_time
 
-        # Subtract session pauses
+        # Calculate total pauses (student + session)
+        total_pauses = timedelta(0)
+
+        # 1. Session-level pauses
         if self.session.total_pause_duration:
-            base_remaining -= self.session.total_pause_duration
-
-        # Subtract current session pause
+            total_pauses += self.session.total_pause_duration
         if self.session.pause_started_at:
-            base_remaining -= now - self.session.pause_started_at
+            total_pauses += now - self.session.pause_started_at
 
-        # Subtract student pauses
+        # 2. Student-level pauses
         if self.total_pause_duration:
-            base_remaining -= self.total_pause_duration
-
-        # Subtract current student pause
+            total_pauses += self.total_pause_duration
         if self.is_paused and self.pause_started_at:
-            base_remaining -= now - self.pause_started_at
+            total_pauses += now - self.pause_started_at
 
-        return max(base_remaining, timedelta(0))
+        # CORRECTED CALCULATION
+        active_time_used = elapsed_time - total_pauses
+        remaining = self.time_remaining - active_time_used
+
+        return max(remaining, timedelta(0))
 
 
 class StudentAnswer(models.Model):
