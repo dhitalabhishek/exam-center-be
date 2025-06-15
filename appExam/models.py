@@ -47,6 +47,7 @@ class ExamSession(models.Model):
     STATUS_CHOICES = [
         ("scheduled", "Scheduled"),
         ("ongoing", "Ongoing"),
+        ("paused", "Paused"),  # Add paused status
         ("completed", "Completed"),
         ("cancelled", "Cancelled"),
     ]
@@ -55,14 +56,14 @@ class ExamSession(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True)
 
+    # Session-level pause tracking
     pause_started_at = models.DateTimeField(null=True, blank=True)
     total_pause_duration = models.DurationField(default=timedelta(0))
     expected_end_time = models.DateTimeField(null=True, blank=True)
 
     notice = RichTextField(
         blank=True,
-        help_text="Notice for the exam session, can include\
-            instructions or important information.",
+        help_text="Notice for the exam session, can include instructions or important information.",
     )
     status = models.CharField(
         max_length=30,
@@ -95,6 +96,44 @@ class ExamSession(models.Model):
         if self.expected_end_time and self.total_pause_duration:
             return self.expected_end_time + self.total_pause_duration
         return self.end_time
+
+    @property
+    def is_session_paused(self):
+        """Check if the entire session is paused"""
+        return self.status == "paused"
+
+    @property
+    def current_session_pause_duration(self):
+        """Get current pause duration if session is paused"""
+        if self.is_session_paused and self.pause_started_at:
+            return timezone.now() - self.pause_started_at
+        return timedelta(0)
+
+    @property
+    def total_session_pause_duration(self):
+        """Get total pause duration including current pause"""
+        total = self.total_pause_duration
+        if self.is_session_paused and self.pause_started_at:
+            total += timezone.now() - self.pause_started_at
+        return total
+
+    def pause_session(self):
+        """Pause the entire session"""
+        if self.status == "ongoing":
+            self.pause_started_at = timezone.now()
+            self.status = "paused"
+            self.save(update_fields=["pause_started_at", "status"])
+
+    def resume_session(self):
+        """Resume the paused session"""
+        if self.status == "paused" and self.pause_started_at:
+            pause_duration = timezone.now() - self.pause_started_at
+            self.total_pause_duration += pause_duration
+            self.pause_started_at = None
+            self.status = "ongoing"
+            self.save(
+                update_fields=["total_pause_duration", "pause_started_at", "status"]
+            )
 
     @property
     def duration(self) -> timedelta:
@@ -215,34 +254,70 @@ class StudentExamEnrollment(models.Model):
     active_exam_time_used = models.DurationField(default=timedelta(0))
     last_active_timestamp = models.DateTimeField(null=True, blank=True)
 
+    # NEW FIELD: Store time remaining when paused
+    time_remaining_at_pause = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="Time remaining when the exam was paused. Used to display consistent time during pause.",  # noqa: E501
+    )
+
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
 
     @property
     def effective_time_remaining(self):
-        """Calculate remaining time accounting for real-time usage"""
+        """Calculate remaining time - if paused, return stored pause time"""
         if not self.time_remaining:
             return timedelta(0)
 
-        total_used = self.active_exam_time_used
+        # If paused, return the time that was remaining when pause started
+        if self.is_paused and self.time_remaining_at_pause is not None:
+            return max(self.time_remaining_at_pause, timedelta(0))
 
-        # Only count active time if present and not paused
-        if self.present and not self.is_paused and self.last_active_timestamp:
-            current_session_time = timezone.now() - self.last_active_timestamp
-            total_used += current_session_time
+        # If not paused, calculate normally
+        # Calculate total time elapsed since session started
+        session_elapsed = timezone.now() - self.session.start_time
 
-        remaining = self.time_remaining - total_used
-        return max(remaining, timedelta(0))
+        # Subtract any previously paused time
+        total_paused = self.active_exam_time_used
+        if self.last_active_timestamp:
+            # Add current active session time
+            # current_active = timezone.now() - self.last_active_timestamp
+            # Don't subtract current active time, we want total elapsed minus paused time
+            actual_elapsed = session_elapsed - total_paused
+        else:
+            actual_elapsed = session_elapsed - total_paused
+
+        # Calculate remaining time
+        remaining = self.time_remaining - actual_elapsed
+        remaining = max(remaining, timedelta(0))
+        return timedelta(seconds=int(remaining.total_seconds()))
 
     def get_current_active_time_used(self):
-        """Get total active time used including current session if active"""
-        total_used = self.active_exam_time_used
+        """Get total time used (excluding current active session if not paused)"""
+        return self.active_exam_time_used
 
-        if not self.is_paused and self.last_active_timestamp:
-            current_session_time = timezone.now() - self.last_active_timestamp
-            total_used += current_session_time
+    def pause_exam_timer(self):
+        """Pause the timer and store the current time remaining"""
+        if not self.is_paused:
+            # Store current effective time remaining
+            self.time_remaining_at_pause = self.effective_time_remaining
 
-        return total_used
+            # If we're currently in an active session, add that time to used time
+            if self.last_active_timestamp:
+                active_duration = timezone.now() - self.last_active_timestamp
+                self.active_exam_time_used += active_duration
+
+            self.is_paused = True
+            self.last_active_timestamp = timezone.now()  # Mark when pause started
+            self.save(
+                update_fields=[
+                    "is_paused",
+                    "last_active_timestamp",
+                    "time_remaining_at_pause",
+                    "active_exam_time_used",
+                ]
+            )
 
     def start_exam_timer(self):
         """Call when student becomes active"""
@@ -250,37 +325,34 @@ class StudentExamEnrollment(models.Model):
             self.last_active_timestamp = timezone.now()
             # Don't auto-save here, let caller decide what fields to save
 
-    def pause_exam_timer(self):
-        """Call when pausing student"""
-        if not self.is_paused and self.last_active_timestamp:
-            # Add active time before pausing
-            active_duration = timezone.now() - self.last_active_timestamp
-            self.active_exam_time_used += active_duration
-            self.is_paused = True
-            self.last_active_timestamp = None
+    def resume_exam_timer(self):
+        """Resume the timer from paused state"""
+        if self.is_paused:
+            # Update the actual time_remaining to what was stored at pause
+            if self.time_remaining_at_pause is not None:
+                self.time_remaining = self.time_remaining_at_pause
+
+            self.is_paused = False
+            self.time_remaining_at_pause = None  # Clear the pause time
+            self.last_active_timestamp = timezone.now()  # Mark resume time
             self.save(
                 update_fields=[
-                    "active_exam_time_used",
                     "is_paused",
                     "last_active_timestamp",
+                    "time_remaining_at_pause",
+                    "time_remaining",
                 ],
             )
 
-    def resume_exam_timer(self):
-        """Call when resuming student"""
-        if self.is_paused:
-            self.is_paused = False
-            self.last_active_timestamp = timezone.now()
-            self.save(update_fields=["is_paused", "last_active_timestamp"])
-
     def stop_exam_timer(self):
         """Call when exam ends/submits"""
-        if not self.is_paused and self.last_active_timestamp:
+        if self.last_active_timestamp and not self.is_paused:
             # Add final active time
             active_duration = timezone.now() - self.last_active_timestamp
             self.active_exam_time_used += active_duration
-            self.last_active_timestamp = None
-            self.save(update_fields=["active_exam_time_used", "last_active_timestamp"])
+
+        self.last_active_timestamp = timezone.now()  # Mark when stopped
+        self.save(update_fields=["active_exam_time_used", "last_active_timestamp"])
 
     def get_detailed_status(self):
         """Get detailed status information for debugging."""
@@ -288,6 +360,9 @@ class StudentExamEnrollment(models.Model):
             "status": self.status,
             "is_paused": self.is_paused,
             "time_remaining": self.time_remaining.total_seconds(),
+            "time_remaining_at_pause": self.time_remaining_at_pause.total_seconds()
+            if self.time_remaining_at_pause
+            else None,
             "active_time_used": self.get_current_active_time_used().total_seconds(),
             "effective_time_remaining": self.effective_time_remaining.total_seconds(),
             "last_active_timestamp": self.last_active_timestamp.isoformat()

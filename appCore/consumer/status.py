@@ -56,23 +56,33 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
 
         try:
             with transaction.atomic():
-                enrollment = StudentExamEnrollment.objects.select_for_update().get(
-                    candidate=self.user.candidate_profile,
+                enrollment = (
+                    StudentExamEnrollment.objects.select_for_update()
+                    .select_related("session")
+                    .get(
+                        candidate=self.user.candidate_profile,
+                        status__in=[
+                            "inactive",
+                            "active",
+                        ],  # Only get active enrollments
+                    )
                 )
         except StudentExamEnrollment.DoesNotExist:
             return
 
-        # --- NEW: mark present ---
+        # Mark student as present
         enrollment.present = True
-        enrollment.save(update_fields=["present"])
 
+        # Check if session is paused - don't resume individual timer if session is paused
+        session_is_paused = enrollment.session.is_session_paused
         current_time = timezone.now()
-        was_paused = enrollment.is_paused
+        was_individually_paused = enrollment.is_paused
 
-        # Handle resume from pause
-        if was_paused:
+        # Only resume individual timer if session is not paused
+        if was_individually_paused and not session_is_paused:
             enrollment.resume_exam_timer()
             remaining_seconds = enrollment.effective_time_remaining.total_seconds()
+
             if remaining_seconds > 0:
                 expire_student_exam.apply_async(
                     args=(enrollment.id,),
@@ -80,37 +90,70 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
                     task_id=f"expire_exam_{enrollment.id}",
                 )
             else:
+                # Time expired, submit exam
                 enrollment.stop_exam_timer()
                 enrollment.status = "submitted"
-                enrollment.save(update_fields=["status"])
+                enrollment.save(
+                    update_fields=[
+                        "status",
+                        "present",
+                        "active_exam_time_used",
+                        "last_active_timestamp",
+                    ],
+                )
                 return
 
-        # Handle activation from inactive state
-        elif enrollment.status == "inactive":
+        # Handle activation from inactive state (only if session is not paused)
+        elif enrollment.status == "inactive" and not session_is_paused:
             enrollment.status = "active"
             enrollment.start_exam_timer()
-            enrollment.save(update_fields=["status", "last_active_timestamp"])
             remaining_seconds = enrollment.effective_time_remaining.total_seconds()
+
             if remaining_seconds > 0:
                 expire_student_exam.apply_async(
                     args=(enrollment.id,),
                     countdown=remaining_seconds,
                     task_id=f"expire_exam_{enrollment.id}",
                 )
+            else:
+                # Time expired immediately
+                enrollment.stop_exam_timer()
+                enrollment.status = "submitted"
+                enrollment.save(
+                    update_fields=[
+                        "status",
+                        "present",
+                        "active_exam_time_used",
+                        "last_active_timestamp",
+                    ],
+                )
+                return
 
-        # Ensure timestamp if missing
-        elif enrollment.status == "active" and not enrollment.last_active_timestamp:
-            enrollment.last_active_timestamp = current_time
-            enrollment.save(update_fields=["last_active_timestamp"])
+        # Save the present status regardless
+        enrollment.save(update_fields=["present"])
 
-        # Queue resume event
-        if was_paused:
+        # Queue resume event only if we actually resumed
+        if was_individually_paused and not session_is_paused:
             redis_client = get_redis_client()
             redis_client.setex(
                 f"exam_event_{enrollment.id}",
                 REDIS_EVENT_TTL,
                 json.dumps(
                     {"type": "exam_resumed", "timestamp": current_time.isoformat()},
+                ),
+            )
+        elif session_is_paused:
+            # Notify client that session is paused
+            redis_client = get_redis_client()
+            redis_client.setex(
+                f"exam_event_{enrollment.id}",
+                REDIS_EVENT_TTL,
+                json.dumps(
+                    {
+                        "type": "session_paused",
+                        "message": "Session is currently paused",
+                        "timestamp": current_time.isoformat(),
+                    },
                 ),
             )
 
@@ -129,18 +172,30 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
 
         try:
             with transaction.atomic():
-                enrollment = StudentExamEnrollment.objects.select_for_update().get(
-                    candidate=self.user.candidate_profile,
+                enrollment = (
+                    StudentExamEnrollment.objects.select_for_update()
+                    .select_related("session")
+                    .get(
+                        candidate=self.user.candidate_profile,
+                        status__in=["active", "inactive"],
+                    )
                 )
         except StudentExamEnrollment.DoesNotExist:
             return
 
-        # --- NEW: clear present ---
+        # Clear present flag
         enrollment.present = False
 
-        if enrollment.status == "active" and not enrollment.is_paused:
+        # Only pause individual timer if student is active and not already paused
+        # and if the session itself is not paused (to avoid double-pausing)
+        if (
+            enrollment.status == "active"
+            and not enrollment.is_paused
+            and not enrollment.session.is_session_paused
+        ):
             enrollment.pause_exam_timer()
             current_app.control.revoke(f"expire_exam_{enrollment.id}", terminate=True)
+
             redis_client = get_redis_client()
             redis_client.setex(
                 f"exam_event_{enrollment.id}",
@@ -153,7 +208,7 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
                 ),
             )
 
-        enrollment.save(update_fields=["present", "is_paused", "active_exam_time_used"])
+        enrollment.save(update_fields=["present"])
 
     async def send_initial_status(self):
         """Send initial exam status on connection."""
@@ -214,6 +269,11 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
         try:
             return StudentExamEnrollment.objects.select_related("session").get(
                 candidate=self.user.candidate_profile,
+                status__in=[
+                    "inactive",
+                    "active",
+                    "submitted",
+                ],  # Include all relevant statuses
             )
         except StudentExamEnrollment.DoesNotExist:
             return None
@@ -221,24 +281,49 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_exam_status(self, enrollment, current_time):
         enrollment.refresh_from_db()
-        time_remaining_seconds = max(
-            0, enrollment.effective_time_remaining.total_seconds(),
+        enrollment.session.refresh_from_db()
+
+        # Use the updated time calculation method that accounts for session pauses
+        time_remaining = enrollment.effective_time_remaining
+        time_remaining_seconds = (
+            max(0, time_remaining.total_seconds()) if time_remaining else 0
         )
-        current_active_time_used = (
-            enrollment.get_current_active_time_used().total_seconds()
+
+        # Get allocated time in seconds
+        allocated_seconds = (
+            enrollment.time_remaining.total_seconds()
+            if enrollment.time_remaining
+            else 0
+        )
+
+        # Calculate time used including session pauses
+        total_time_used = enrollment.get_current_active_time_used().total_seconds()
+        session_pause_time = (
+            enrollment.session.total_session_pause_duration.total_seconds()
         )
 
         return {
             "status": enrollment.status,
             "is_paused": enrollment.is_paused,
+            "session_paused": enrollment.session.is_session_paused,
+            "session_status": enrollment.session.status,
             "time_remaining": time_remaining_seconds,
             "session_id": enrollment.session.id,
-            "active_time_used": current_active_time_used,
-            "total_time_allocated": enrollment.time_remaining.total_seconds(),
+            "active_time_used": total_time_used,
+            "session_pause_time": session_pause_time,
+            "total_time_allocated": allocated_seconds,
+            "effective_time_remaining": time_remaining_seconds,
             "last_active_timestamp": timezone.localtime(
                 enrollment.last_active_timestamp,
             ).strftime("%Y-%m-%d %H:%M:%S")
             if enrollment.last_active_timestamp
+            else None,
+            "session_start_time": enrollment.session.start_time.isoformat(),
+            "session_end_time": enrollment.session.end_time.isoformat()
+            if enrollment.session.end_time
+            else None,
+            "session_effective_end_time": enrollment.session.effective_end_time.isoformat()
+            if enrollment.session.effective_end_time
             else None,
         }
 

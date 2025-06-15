@@ -32,7 +32,8 @@ def check_student_connections():
     cutoff = timezone.now() - timeout
 
     ghosts = StudentExamEnrollment.objects.filter(
-        present=True, last_active_timestamp__lt=cutoff,
+        present=True,
+        last_active_timestamp__lt=cutoff,
     )
     for e in ghosts:
         e.present = False
@@ -44,18 +45,20 @@ def check_student_connections():
 
 @shared_task
 def check_session_completion():
-    """Complete any sessions whose end_time has passed and no present students remain."""  # noqa: E501
+    """Complete sessions whose effective end time has passed and no active students remain."""
     now = timezone.now()
     completed_count = 0
 
+    # Only check ongoing sessions (not paused ones)
     sessions = ExamSession.objects.filter(status="ongoing")
     for session in sessions:
-        if session.end_time and now >= session.end_time + timedelta(
+        if session.effective_end_time and now >= session.effective_end_time + timedelta(
             seconds=SESSION_COMPLETION_BUFFER,
         ):
-            # only consider students both active and still connected
+            # Only consider students both active and still connected
             still_running = session.studentexamenrollment_set.filter(
-                status="active", present=True,
+                status="active",
+                present=True,
             ).exists()
 
             if not still_running:
@@ -69,6 +72,8 @@ def check_session_completion():
 @shared_task
 def halt_exam_session(session_id, reason="admin_request"):
     """Halt exam session with pause handling."""
+    session = ExamSession.objects.get(id=session_id)
+
     enrollments = StudentExamEnrollment.objects.filter(
         session_id=session_id,
         status="active",
@@ -77,7 +82,15 @@ def halt_exam_session(session_id, reason="admin_request"):
         current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
         e.status = "submitted"
         e.present = False
-        e.save(update_fields=["status", "present"])
+        e.stop_exam_timer()  # Stop individual timer
+        e.save(
+            update_fields=[
+                "status",
+                "present",
+                "active_exam_time_used",
+                "last_active_timestamp",
+            ],
+        )
 
         payload = {
             "type": "session_halted",
@@ -86,7 +99,8 @@ def halt_exam_session(session_id, reason="admin_request"):
         }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
 
-    ExamSession.objects.filter(id=session_id).update(status="cancelled")
+    session.status = "cancelled"
+    session.save(update_fields=["status"])
 
 
 @shared_task
@@ -127,11 +141,20 @@ def activate_and_schedule_expiry():
 def pause_exam_session(session_id):
     """Pause entire exam session."""
     session = ExamSession.objects.get(id=session_id)
+
+    # Pause the session itself
+    session.pause_session()
+
+    # Revoke all pending expiry tasks and pause individual student timers
     enrollments = session.studentexamenrollment_set.filter(status="active")
 
     for e in enrollments:
+        # Revoke the expiry task
         current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
-        e.pause_exam_timer()
+
+        # Pause individual student timer if they're currently active
+        if not e.is_paused:
+            e.pause_exam_timer()
 
         payload = {
             "type": "exam_paused",
@@ -139,19 +162,26 @@ def pause_exam_session(session_id):
         }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
 
+    return f"Paused session {session_id} with {enrollments.count()} active students"
+
 
 @shared_task
 def resume_exam_session(session_id):
     """Resume paused exam session."""
     session = ExamSession.objects.get(id=session_id)
-    enrollments = session.studentexamenrollment_set.filter(
-        status="active",
-        is_paused=True,
-    )
+
+    # Resume the session itself
+    session.resume_session()
+
+    # Resume individual student timers and reschedule expiry tasks
+    enrollments = session.studentexamenrollment_set.filter(status="active")
 
     for e in enrollments:
-        e.resume_exam_timer()
+        # Resume individual student timer if they were paused
+        if e.is_paused:
+            e.resume_exam_timer()
 
+        # Calculate remaining time and reschedule expiry
         remaining_seconds = e.effective_time_remaining.total_seconds()
         if remaining_seconds > 0:
             expire_student_exam.apply_async(
@@ -159,12 +189,17 @@ def resume_exam_session(session_id):
                 countdown=remaining_seconds,
                 task_id=f"expire_exam_{e.id}",
             )
+        else:
+            # Time already expired, submit immediately
+            expire_student_exam.delay(e.id)
 
         payload = {
             "type": "exam_resumed",
             "timestamp": timezone.now().isoformat(),
         }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
+
+    return f"Resumed session {session_id} with {enrollments.count()} active students"
 
 
 @shared_task
@@ -173,16 +208,69 @@ def expire_student_exam(enroll_id):
     try:
         e = StudentExamEnrollment.objects.get(id=enroll_id)
     except StudentExamEnrollment.DoesNotExist:
-        return
+        return f"Enrollment {enroll_id} not found"
 
+    # Only expire if student is still active
     if e.status == "active":
         e.stop_exam_timer()
         e.status = "submitted"
         e.present = False
-        e.save(update_fields=["status", "present"])
+        e.save(
+            update_fields=[
+                "status",
+                "present",
+                "active_exam_time_used",
+                "last_active_timestamp",
+            ],
+        )
 
         payload = {
             "type": "exam_expired",
             "timestamp": timezone.now().isoformat(),
         }
         redis_client.setex(f"exam_event_{e.id}", 60, json.dumps(payload))
+
+        return f"Expired exam for enrollment {enroll_id}"
+
+    return f"Enrollment {enroll_id} already {e.status}"
+
+
+@shared_task
+def extend_session_time(session_id, additional_minutes):
+    """Extend session time by specified minutes."""
+    session = ExamSession.objects.get(id=session_id)
+
+    if session.status not in ["ongoing", "paused"]:
+        return f"Cannot extend session {session_id} - status is {session.status}"
+
+    additional_time = timedelta(minutes=additional_minutes)
+
+    # Update session end time
+    if session.end_time:
+        session.end_time += additional_time
+    if session.expected_end_time:
+        session.expected_end_time += additional_time
+    session.save(update_fields=["end_time", "expected_end_time"])
+
+    # Update student time allocations and reschedule expiry tasks
+    enrollments = session.studentexamenrollment_set.filter(status="active")
+
+    for e in enrollments:
+        # Revoke existing expiry task
+        current_app.control.revoke(f"expire_exam_{e.id}", terminate=True)
+
+        # Add time to student allocation
+        e.time_remaining += additional_time
+        e.save(update_fields=["time_remaining"])
+
+        # Reschedule expiry task if session is not paused
+        if session.status == "ongoing":
+            remaining_seconds = e.effective_time_remaining.total_seconds()
+            if remaining_seconds > 0:
+                expire_student_exam.apply_async(
+                    args=(e.id,),
+                    countdown=remaining_seconds,
+                    task_id=f"expire_exam_{e.id}",
+                )
+
+    return f"Extended session {session_id} by {additional_minutes} minutes for {enrollments.count()} students"

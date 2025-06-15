@@ -201,26 +201,37 @@ class ExamSessionAdmin(admin.ModelAdmin):
         session = get_object_or_404(ExamSession, pk=object_id)
         pause_exam_session.delay(session.id)
         self.message_user(request, "Exam session pause initiated")
-        return HttpResponseRedirect("../../")
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "../"))
 
     def resume_session(self, request, object_id):
         session = get_object_or_404(ExamSession, pk=object_id)
         resume_exam_session.delay(session.id)
         self.message_user(request, "Exam session resume initiated")
-        return HttpResponseRedirect("../../")
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "../"))
 
     def pause_resume_button(self, obj):
-        if obj.status != "ongoing":
-            return format_html('<span class="button disabled">Not Active</span>')
-        if obj.pause_started_at:
+        # Handle all possible states
+        if obj.status == "ongoing":
+            if obj.pause_started_at:
+                # Ongoing but with pause timestamp (shouldn't normally happen)
+                return format_html(
+                    '<a class="button" href="{}" style="background: #28a745; color: white; padding: 5px 10px;">▶ Resume</a>',
+                    reverse("admin:exam_session_resume", args=[obj.id]),
+                )
             return format_html(
-                '<a class="button" href="{}" style="color: white; background: #28a745; padding: 5px 10px; text-decoration: none; border-radius: 3px;">▶ Resume</a>',
+                '<a class="button" href="{}" style="background: #dc3545; color: white; padding: 5px 10px;">⏸ Pause</a>',
+                reverse("admin:exam_session_pause", args=[obj.id]),
+            )
+
+        elif obj.status == "paused":  # noqa: RET505
+            # This is the key fix - handle paused status explicitly
+            return format_html(
+                '<a class="button" href="{}" style="background: #28a745; color: white; padding: 5px 10px;">▶ Resume</a>',
                 reverse("admin:exam_session_resume", args=[obj.id]),
             )
-        return format_html(
-            '<a class="button" href="{}" style="color: white; background: #dc3545; padding: 5px 10px; text-decoration: none; border-radius: 3px;">⏸ Pause</a>',
-            reverse("admin:exam_session_pause", args=[obj.id]),
-        )
+
+        # Handle other statuses
+        return format_html('<span class="button disabled">Not Active</span>')
 
     pause_resume_button.short_description = "Session Control"
 
@@ -236,6 +247,7 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "candidate",
         "session",
         "status",
+        "present",
         "effective_time_remaining",
     )
     list_filter = ("session__status", "hall_assignment__hall")
@@ -247,6 +259,7 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "last_active_timestamp",
         "updated_at",
         "created_at",
+        "present",
     )
     # Fields editable for admins
     fields = (
@@ -363,7 +376,7 @@ class QuestionAdmin(admin.ModelAdmin):
             context,
         )
 
-    def import_questions_document_view(self, request, session_id):
+    def import_questions_document_view(self, request, session_id):  # noqa: C901
         """View to upload document and parse questions"""
         session = get_object_or_404(ExamSession, id=session_id)
 
@@ -441,14 +454,13 @@ class QuestionAdmin(admin.ModelAdmin):
                         )
 
                     context = {
+                        **self.admin_site.each_context(request),
                         "title": f"Import Questions - {session}",
                         "session": session,
                         "document_name": document.name,
-                        "document_content": content[:1000] + "..."
-                        if len(content) > 1000
-                        else content,
+                        "document_content": content,
                         "validation_result": validation_result,
-                        "opts": self.model._meta,
+                        "opts": self.model._meta,  # noqa: SLF001
                         "has_view_permission": True,
                     }
 
@@ -469,6 +481,7 @@ class QuestionAdmin(admin.ModelAdmin):
             form = DocumentUploadForm()
 
         context = {
+            **self.admin_site.each_context(request),
             "title": f"Upload Document - {session}",
             "form": form,
             "session": session,
