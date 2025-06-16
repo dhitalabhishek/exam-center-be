@@ -17,6 +17,7 @@ from django.utils.decorators import method_decorator
 from django.utils.html import escape
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+from django.utils.timezone import localtime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -145,6 +146,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "duration",
         "expected_end_time",
         "pause_started_at",
+        "get_effective_end_time_local",
         "total_pause_duration",
         "updated_at",
         "created_at",
@@ -155,6 +157,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "start_time",
         "end_time",
         "status",
+        "get_effective_end_time_local",
         "expected_end_time",
         "pause_started_at",
         "total_pause_duration",
@@ -164,6 +167,11 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "updated_at",
         "created_at",
     )
+
+    def get_effective_end_time_local(self, obj):
+        return localtime(obj.effective_end_time)
+
+    get_effective_end_time_local.short_description = "Effective End Time"
 
     def get_urls(self):
         urls = super().get_urls()

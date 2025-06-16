@@ -296,12 +296,6 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             else 0
         )
 
-        # Calculate time used including session pauses
-        total_time_used = enrollment.get_current_active_time_used().total_seconds()
-        session_pause_time = (
-            enrollment.session.total_session_pause_duration.total_seconds()
-        )
-
         return {
             "status": enrollment.status,
             "is_paused": enrollment.is_paused,
@@ -309,8 +303,6 @@ class ExamStatusConsumer(AsyncWebsocketConsumer):
             "session_status": enrollment.session.status,
             "time_remaining": time_remaining_seconds,
             "session_id": enrollment.session.id,
-            "active_time_used": total_time_used,
-            "session_pause_time": session_pause_time,
             "total_time_allocated": allocated_seconds,
             "effective_time_remaining": time_remaining_seconds,
             "last_active_timestamp": timezone.localtime(
