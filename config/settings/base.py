@@ -5,6 +5,7 @@ import ssl
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # backend/
@@ -374,6 +375,9 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
+
+    # Sesession authentication for the docs views
+    "SERVE_AUTHENTICATION": ["rest_framework.authentication.SessionAuthentication"],
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
@@ -400,4 +404,12 @@ JAZZMIN_UI_TWEAKS = {
 JAZZMIN_SETTINGS = {
     "hide_apps": ["account", "authtoken", "mfa", "sites"],
     "show_ui_builder": True,
+}
+
+
+CELERY_BEAT_SCHEDULE = {
+    "exam_monitor": {
+        "task": "appCore.tasks.exam_monitor",
+        "schedule": crontab(minute="*"),
+    },
 }

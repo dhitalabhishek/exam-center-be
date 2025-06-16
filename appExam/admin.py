@@ -5,9 +5,6 @@ from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.forms import CharField
-from django.forms import ModelChoiceField
-from django.forms import Textarea
 from django.http import HttpResponseRedirect
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -20,8 +17,12 @@ from django.utils.decorators import method_decorator
 from django.utils.html import escape
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+from django.utils.timezone import localtime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+
+from appCore.tasks import pause_exam_session
+from appCore.tasks import resume_exam_session
 
 from .forms import DocumentUploadForm
 from .models import Answer
@@ -37,24 +38,6 @@ from .tasks import enroll_students_by_symbol_range
 admin.site.register(StudentAnswer)
 
 
-# Custom form for range enrollment
-# class EnrollmentRangeForm(Form):
-#     range_string = CharField(
-#         max_length=200,
-#         help_text="Enter range like '13-A1-PT - 14-C2-GM' or single symbol '17-A6-12'",
-#         widget=Textarea(attrs={"rows": 3, "cols": 50}),
-#     )
-
-#     def __init__(self, session_id, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         # Filter hall assignments for this session
-#         self.fields["hall_assignment"] = ModelChoiceField(
-#             queryset=HallAndStudentAssignment.objects.filter(session_id=session_id),
-#             help_text="Select which hall assignment this range applies to",
-#         )
-
-
-
 class EnrollmentRangeForm(forms.Form):
     def __init__(self, session_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -66,11 +49,11 @@ class EnrollmentRangeForm(forms.Form):
         self.fields["range_string"] = forms.CharField(
             label="Symbol Number Range",
             max_length=500,
-            widget=forms.TextInput(attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"}),
+            widget=forms.TextInput(
+                attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"},
+            ),
             help_text="Enter comma-separated ranges or individual symbols.",
         )
-
-# admin.site.register(HallAndStudentAssignment)
 
 
 # Custom admin view for enrolling students
@@ -92,7 +75,9 @@ def enroll_students_view(request, session_id):
 
             # Get or create hall assignment
             hall_assignment, created = HallAndStudentAssignment.objects.get_or_create(
-                session=session, hall=hall, defaults={"roll_number_range": range_string},
+                session=session,
+                hall=hall,
+                defaults={"roll_number_range": range_string},
             )
 
             # If already exists, update range
@@ -150,26 +135,45 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "status",
         "enroll_students_link",
         "duration",
+        "pause_resume_button",  # Add session control button
     )
     list_filter = ("status", "exam__program")
     date_hierarchy = "start_time"
     list_per_page = 10
-    readonly_fields = ("enroll_students_link", "duration")
 
-    def enroll_students_link(self, obj):
-        """Add a link to enroll students for this session"""
-        if obj.pk:
-            url = reverse("admin:enroll_students", args=[obj.pk])
-            return format_html(
-                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',  # noqa: E501
-                url,
-            )
-        return "Save the session first"
+    readonly_fields = (
+        "enroll_students_link",
+        "duration",
+        "expected_end_time",
+        "pause_started_at",
+        "get_effective_end_time_local",
+        "total_pause_duration",
+        "updated_at",
+        "created_at",
+        "session_controls",  # Add control in detail view
+    )
+    fields = (
+        "exam",
+        "start_time",
+        "end_time",
+        "status",
+        "get_effective_end_time_local",
+        "expected_end_time",
+        "pause_started_at",
+        "total_pause_duration",
+        "enroll_students_link",
+        "duration",
+        "session_controls",  # Controls in change view
+        "updated_at",
+        "created_at",
+    )
 
-    enroll_students_link.short_description = "Quick Actions"
+    def get_effective_end_time_local(self, obj):
+        return localtime(obj.effective_end_time)
+
+    get_effective_end_time_local.short_description = "Effective End Time"
 
     def get_urls(self):
-        """Add custom URL for enrollment view"""
         urls = super().get_urls()
         custom_urls = [
             path(
@@ -177,16 +181,112 @@ class ExamSessionAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(enroll_students_view),
                 name="enroll_students",
             ),
+            path(
+                "<path:object_id>/pause/",
+                self.admin_site.admin_view(self.pause_session),
+                name="exam_session_pause",
+            ),
+            path(
+                "<path:object_id>/resume/",
+                self.admin_site.admin_view(self.resume_session),
+                name="exam_session_resume",
+            ),
         ]
         return custom_urls + urls
+
+    def enroll_students_link(self, obj):
+        if obj.pk:
+            url = reverse("admin:enroll_students", args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" style="background: #417690; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">📝 Enroll Students</a>',
+                url,
+            )
+        return "Save the session first"
+
+    enroll_students_link.short_description = "Quick Actions"
+
+    def pause_session(self, request, object_id):
+        session = get_object_or_404(ExamSession, pk=object_id)
+        pause_exam_session.delay(session.id)
+        self.message_user(request, "Exam session pause initiated")
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "../"))
+
+    def resume_session(self, request, object_id):
+        session = get_object_or_404(ExamSession, pk=object_id)
+        resume_exam_session.delay(session.id)
+        self.message_user(request, "Exam session resume initiated")
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER", "../"))
+
+    def pause_resume_button(self, obj):
+        # Handle all possible states
+        if obj.status == "ongoing":
+            if obj.pause_started_at:
+                # Ongoing but with pause timestamp (shouldn't normally happen)
+                return format_html(
+                    '<a class="button" href="{}" style="background: #28a745; color: white; padding: 5px 10px;">▶ Resume</a>',
+                    reverse("admin:exam_session_resume", args=[obj.id]),
+                )
+            return format_html(
+                '<a class="button" href="{}" style="background: #dc3545; color: white; padding: 5px 10px;">⏸ Pause</a>',
+                reverse("admin:exam_session_pause", args=[obj.id]),
+            )
+
+        elif obj.status == "paused":  # noqa: RET505
+            # This is the key fix - handle paused status explicitly
+            return format_html(
+                '<a class="button" href="{}" style="background: #28a745; color: white; padding: 5px 10px;">▶ Resume</a>',
+                reverse("admin:exam_session_resume", args=[obj.id]),
+            )
+
+        # Handle other statuses
+        return format_html('<span class="button disabled">Not Active</span>')
+
+    pause_resume_button.short_description = "Session Control"
+
+    def session_controls(self, obj):
+        return self.pause_resume_button(obj)
+
+    session_controls.short_description = "Controls"
 
 
 @admin.register(StudentExamEnrollment)
 class StudentExamEnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "session", "time_remaining")
+    list_display = (
+        "candidate",
+        "session",
+        "status",
+        "present",
+        "effective_time_remaining",
+    )
     list_filter = ("session__status", "hall_assignment__hall")
     list_per_page = 10
-    readonly_fields = ("candidate", "session", "hall_assignment")
+
+    readonly_fields = (
+        "candidate",
+        "session",
+        "last_active_timestamp",
+        "updated_at",
+        "created_at",
+        "present",
+    )
+    # Fields editable for admins
+    fields = (
+        "candidate",
+        "session",
+        "status",
+        "hall_assignment",
+        "question_order",
+        "answer_order",
+        "is_paused",
+        "last_active_timestamp",
+        "updated_at",
+        "created_at",
+    )
+
+    def effective_time_remaining(self, obj):
+        return obj.effective_time_remaining
+
+    effective_time_remaining.short_description = "Effective Time Remaining"
 
     def has_add_permission(self, request):
         # Disable manual addition - should be done through the enrollment task
@@ -284,7 +384,7 @@ class QuestionAdmin(admin.ModelAdmin):
             context,
         )
 
-    def import_questions_document_view(self, request, session_id):
+    def import_questions_document_view(self, request, session_id):  # noqa: C901
         """View to upload document and parse questions"""
         session = get_object_or_404(ExamSession, id=session_id)
 
@@ -362,14 +462,13 @@ class QuestionAdmin(admin.ModelAdmin):
                         )
 
                     context = {
+                        **self.admin_site.each_context(request),
                         "title": f"Import Questions - {session}",
                         "session": session,
                         "document_name": document.name,
-                        "document_content": content[:1000] + "..."
-                        if len(content) > 1000
-                        else content,
+                        "document_content": content,
                         "validation_result": validation_result,
-                        "opts": self.model._meta,
+                        "opts": self.model._meta,  # noqa: SLF001
                         "has_view_permission": True,
                     }
 
@@ -390,6 +489,7 @@ class QuestionAdmin(admin.ModelAdmin):
             form = DocumentUploadForm()
 
         context = {
+            **self.admin_site.each_context(request),
             "title": f"Upload Document - {session}",
             "form": form,
             "session": session,

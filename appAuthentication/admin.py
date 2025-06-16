@@ -102,7 +102,8 @@ class CandidateAdmin(admin.ModelAdmin):
             file_extension = uploaded_file.name.lower().split(".")[-1]
             if f".{file_extension}" not in allowed_extensions:
                 messages.error(
-                    request, "Please upload a CSV or Excel file (.csv, .xlsx, .xls)."
+                    request,
+                    "Please upload a CSV or Excel file (.csv, .xlsx, .xls).",
                 )
                 return redirect(request.get_full_path())
 
@@ -125,7 +126,8 @@ class CandidateAdmin(admin.ModelAdmin):
                     # Clean up the uploaded file
                     default_storage.delete(file_path)
                     messages.error(
-                        request, f"File validation failed: {validation_result['error']}"
+                        request,
+                        f"File validation failed: {validation_result['error']}",
                     )
                     return redirect(request.get_full_path())
 

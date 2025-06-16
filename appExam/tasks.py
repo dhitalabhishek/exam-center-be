@@ -217,9 +217,18 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
                 "parsed_ranges": ranges,
             }
 
-            # Only update range if task completed successfully
-            hall_assignment.roll_number_range = hall_assignment.roll_number_range+ ", " + range_string
-            hall_assignment.save()
+            existing = []
+            if hall_assignment.roll_number_range:
+                existing = [
+                    r.strip()
+                    for r in hall_assignment.roll_number_range.split(",")
+                    if r.strip()
+                ]
+
+            if range_string not in existing:
+                existing.append(range_string)
+                hall_assignment.roll_number_range = ", ".join(existing)
+                hall_assignment.save(update_fields=["roll_number_range"])
 
             # Final task updates
             task.message = (
