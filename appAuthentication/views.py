@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import defaultdict
 
@@ -24,6 +25,7 @@ from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def get_tokens_for_user(user):
@@ -34,14 +36,15 @@ def get_tokens_for_user(user):
     }
 
 
-
-
 def admin_register_view(request):
     if request.method == "POST":
         form = AdminRegisterForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, "Admin registered successfully. You can now log in.")
+            messages.success(
+                request,
+                "Admin registered successfully. You can now log in.",
+            )
             return redirect("admin:login")
     else:
         form = AdminRegisterForm()
@@ -55,7 +58,6 @@ def custom_admin_login_view(request):
         login(request, user)
         return redirect("admin:index")
     return render(request, "custom_admin/login.html", {"form": form})
-
 
 
 # ------------------------- Candidate Registration -------------------------
@@ -112,6 +114,12 @@ def candidate_login_view(request):
             "hall_assignment",
             "hall_assignment__hall",
         ).get(candidate=candidate)
+
+        errors = enrollment.validate_timer_state()
+        if errors:
+            logger.error(
+                f"Timer validation failed for enrollment {enrollment.id}: {errors}",  # noqa: G004
+            )
     except StudentExamEnrollment.DoesNotExist:
         return Response(
             {"error": "You are not enrolled in any exam session."},
@@ -165,12 +173,11 @@ def randomize_questions_and_answers_for_enrollment(enrollment):
     enrollment.answer_order = answer_order
 
 
-def build_candidate_login_payload(candidate, access_token,enrollment):
+def build_candidate_login_payload(candidate, access_token, enrollment):
     """
     Build the response payload for successful candidate login.
     """
     try:
-
         exam = enrollment.session.exam
         session = enrollment.session
 

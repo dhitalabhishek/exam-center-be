@@ -174,11 +174,13 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
                             candidate=candidate,
                             session=session,
                         ).exists():
+                            # CREATE ENROLLMENT WITH NEW MODEL STRUCTURE
                             StudentExamEnrollment.objects.create(
                                 candidate=candidate,
                                 session=session,
-                                time_remaining=session.duration,
                                 hall_assignment=hall_assignment,
+                                status="inactive",  # Will activate when session starts
+                                individual_duration=session.base_duration,
                             )
                             enrolled_count += 1
                         else:

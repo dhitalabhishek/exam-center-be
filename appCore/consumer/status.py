@@ -1,326 +1,147 @@
 import json
+import logging
 
-from channels.db import database_sync_to_async
-from channels.generic.websocket import AsyncWebsocketConsumer
+from asgiref.sync import sync_to_async
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.db import transaction
 from django.utils import timezone
 
-# Constants
+from appCore.tasks import complete_expired_sessions
+from appCore.tasks import submit_student_exam
+from appCore.utils.redis_client import get_redis_client
+from appExam.models import StudentExamEnrollment
+
+logger = logging.getLogger(__name__)
+
 UNAUTHORIZED_CODE = 4001
-REDIS_EVENT_TTL = 60
+EVENT_TTL = 60  # seconds
 
 
-class ExamStatusConsumer(AsyncWebsocketConsumer):
-    """WebSocket consumer for on-demand exam status updates."""
+class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
+    """Simplified WebSocket consumer for real-time exam status and timer control."""
 
     async def connect(self):
-        self.user = self.scope["user"]
-        if not self.user.is_authenticated:
-            await self.close(code=UNAUTHORIZED_CODE)
-            return
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            return await self.close(code=UNAUTHORIZED_CODE)
 
         await self.accept()
-        await self.mark_student_active()
-        await self.send_initial_status()
+        self.enrollment = await self._fetch_enrollment()
+        if not self.enrollment:
+            await self.send_error("No active enrollment")
+            return await self.close()
 
-    async def disconnect(self, close_code):
-        await self.mark_student_inactive()
+        # Initial sync and timers
+        await self._sync_and_start_timer()
+        await self.send_status()
+        return None
 
-    async def receive(self, text_data):
-        """Handle incoming WebSocket messages."""
-        try:
-            data = json.loads(text_data)
-        except json.JSONDecodeError:
-            await self.send_error("Invalid JSON format")
-            return
+    async def disconnect(self, code):
+        await self._pause_timer()
 
-        message_type = data.get("type")
-        if message_type == "status_update":
-            await self.send_current_status()
-        elif message_type == "ping":
-            await self.send_json({"type": "pong"})
-        else:
-            await self.send_error(f"Unknown message type: {message_type}")
+    async def receive_json(self, data, **kwargs):
+        msg_type = data.get("type")
+        handlers = {
+            "ping": self._handle_ping,
+            "status": self.send_status,
+            "complete_check": self._handle_complete_check,
+        }
+        handler = handlers.get(msg_type, self._handle_unknown)
+        await handler(data)
 
-    async def mark_student_active(self):
-        """Mark student as active (present) and handle resume logic."""
-        try:
-            await database_sync_to_async(self._mark_active_sync)()
-        except Exception as e:
-            await self.send_error(f"Failed to mark active: {e!s}")
+    # --- Handlers ---
+    async def _handle_ping(self, data):
+        await self.send_json({"type": "pong"})
 
-    def _mark_active_sync(self):
-        from appCore.tasks import expire_student_exam
-        from appCore.utils.redis_client import get_redis_client
-        from appExam.models import StudentExamEnrollment
+    async def _handle_unknown(self, data):
+        await self.send_error(f"Unknown type: {data.get('type')}")
 
-        try:
-            with transaction.atomic():
-                enrollment = (
-                    StudentExamEnrollment.objects.select_for_update()
-                    .select_related("session")
-                    .get(
-                        candidate=self.user.candidate_profile,
-                        status__in=[
-                            "inactive",
-                            "active",
-                        ],  # Only get active enrollments
-                    )
-                )
-        except StudentExamEnrollment.DoesNotExist:
-            return
+    async def _handle_complete_check(self, data):
+        # trigger session completion if needed
+        await sync_to_async(complete_expired_sessions.delay)()
+        await self.send_status()
 
-        # Mark student as present
-        enrollment.present = True
-
-        # Check if session is paused - don't resume individual timer if session is paused
-        session_is_paused = enrollment.session.is_session_paused
-        current_time = timezone.now()
-        was_individually_paused = enrollment.is_paused
-
-        # Only resume individual timer if session is not paused
-        if was_individually_paused and not session_is_paused:
-            enrollment.resume_exam_timer()
-            remaining_seconds = enrollment.effective_time_remaining.total_seconds()
-
-            if remaining_seconds > 0:
-                expire_student_exam.apply_async(
-                    args=(enrollment.id,),
-                    countdown=remaining_seconds,
-                    task_id=f"expire_exam_{enrollment.id}",
-                )
-            else:
-                # Time expired, submit exam
-                enrollment.stop_exam_timer()
-                enrollment.status = "submitted"
-                enrollment.save(
-                    update_fields=[
-                        "status",
-                        "present",
-                        "active_exam_time_used",
-                        "last_active_timestamp",
-                    ],
-                )
-                return
-
-        # Handle activation from inactive state (only if session is not paused)
-        elif enrollment.status == "inactive" and not session_is_paused:
-            enrollment.status = "active"
-            enrollment.start_exam_timer()
-            remaining_seconds = enrollment.effective_time_remaining.total_seconds()
-
-            if remaining_seconds > 0:
-                expire_student_exam.apply_async(
-                    args=(enrollment.id,),
-                    countdown=remaining_seconds,
-                    task_id=f"expire_exam_{enrollment.id}",
-                )
-            else:
-                # Time expired immediately
-                enrollment.stop_exam_timer()
-                enrollment.status = "submitted"
-                enrollment.save(
-                    update_fields=[
-                        "status",
-                        "present",
-                        "active_exam_time_used",
-                        "last_active_timestamp",
-                    ],
-                )
-                return
-
-        # Save the present status regardless
-        enrollment.save(update_fields=["present"])
-
-        # Queue resume event only if we actually resumed
-        if was_individually_paused and not session_is_paused:
-            redis_client = get_redis_client()
-            redis_client.setex(
-                f"exam_event_{enrollment.id}",
-                REDIS_EVENT_TTL,
-                json.dumps(
-                    {"type": "exam_resumed", "timestamp": current_time.isoformat()},
-                ),
-            )
-        elif session_is_paused:
-            # Notify client that session is paused
-            redis_client = get_redis_client()
-            redis_client.setex(
-                f"exam_event_{enrollment.id}",
-                REDIS_EVENT_TTL,
-                json.dumps(
-                    {
-                        "type": "session_paused",
-                        "message": "Session is currently paused",
-                        "timestamp": current_time.isoformat(),
-                    },
-                ),
-            )
-
-    async def mark_student_inactive(self):
-        """Mark student as inactive (paused) and clear present flag."""
-        try:
-            await database_sync_to_async(self._mark_inactive_sync)()
-        except Exception:
-            pass
-
-    def _mark_inactive_sync(self):
-        from celery import current_app
-
-        from appCore.utils.redis_client import get_redis_client
-        from appExam.models import StudentExamEnrollment
-
-        try:
-            with transaction.atomic():
-                enrollment = (
-                    StudentExamEnrollment.objects.select_for_update()
-                    .select_related("session")
-                    .get(
-                        candidate=self.user.candidate_profile,
-                        status__in=["active", "inactive"],
-                    )
-                )
-        except StudentExamEnrollment.DoesNotExist:
-            return
-
-        # Clear present flag
-        enrollment.present = False
-
-        # Only pause individual timer if student is active and not already paused
-        # and if the session itself is not paused (to avoid double-pausing)
-        if (
-            enrollment.status == "active"
-            and not enrollment.is_paused
-            and not enrollment.session.is_session_paused
-        ):
-            enrollment.pause_exam_timer()
-            current_app.control.revoke(f"expire_exam_{enrollment.id}", terminate=True)
-
-            redis_client = get_redis_client()
-            redis_client.setex(
-                f"exam_event_{enrollment.id}",
-                REDIS_EVENT_TTL,
-                json.dumps(
-                    {
-                        "type": "connection_lost_paused",
-                        "timestamp": timezone.now().isoformat(),
-                    },
-                ),
-            )
-
-        enrollment.save(update_fields=["present"])
-
-    async def send_initial_status(self):
-        """Send initial exam status on connection."""
-        try:
-            enrollment = await self.get_user_enrollment()
-            if not enrollment:
-                await self.send_error("Enrollment not found")
-                return
-
-            now = timezone.now()
-            status_data = await self.get_exam_status(enrollment, now)
-
-            await self.send_json(
-                {
-                    "type": "initial_status",
-                    "data": status_data,
-                    "timestamp": now.isoformat(),
-                },
-            )
-        except Exception as e:
-            await self.send_error(f"Failed to get initial status: {e!s}")
-
-    async def send_current_status(self):
-        """Send current exam status on client request."""
-        try:
-            enrollment = await self.get_user_enrollment()
-            if not enrollment:
-                await self.send_error("Enrollment not found")
-                return
-
-            now = timezone.now()
-            status_data = await self.get_exam_status(enrollment, now)
-
-            from appCore.utils.redis_client import get_redis_client
-
-            redis_client = get_redis_client()
-            event_key = f"exam_event_{enrollment.id}"
-            event = await database_sync_to_async(redis_client.get)(event_key)
-
-            if event:
-                status_data["last_event"] = json.loads(event)
-                await database_sync_to_async(redis_client.delete)(event_key)
-
-            await self.send_json(
-                {
-                    "type": "status_update",
-                    "data": status_data,
-                    "timestamp": now.isoformat(),
-                },
-            )
-        except Exception as e:
-            await self.send_error(f"Failed to get status: {e!s}")
-
-    @database_sync_to_async
-    def get_user_enrollment(self):
-        from appExam.models import StudentExamEnrollment
-
+    # --- Core logic ---
+    @sync_to_async
+    def _fetch_enrollment(self):
         try:
             return StudentExamEnrollment.objects.select_related("session").get(
-                candidate=self.user.candidate_profile,
-                status__in=[
-                    "inactive",
-                    "active",
-                    "submitted",
-                ],  # Include all relevant statuses
+                candidate=self.scope["user"].candidate_profile,
+                status__in=["active", "inactive"],
             )
         except StudentExamEnrollment.DoesNotExist:
             return None
 
-    @database_sync_to_async
-    def get_exam_status(self, enrollment, current_time):
-        enrollment.refresh_from_db()
-        enrollment.session.refresh_from_db()
+    @sync_to_async
+    @transaction.atomic
+    def _sync_and_start_timer(self):
+        enroll = self.enrollment
+        enroll.refresh_from_db()
+        # Resume student if session ongoing and not present
+        if enroll.session.status == "ongoing" and not enroll.present:
+            enroll.handle_connect()
+            # schedule submission when time expires
+            remaining = enroll.effective_time_remaining.total_seconds()
+            if remaining > 0:
+                submit_student_exam.apply_async(
+                    args=(enroll.id,),
+                    countdown=remaining,
+                    task_id=f"submit_exam_{enroll.id}",
+                )
+        return True
 
-        # Use the updated time calculation method that accounts for session pauses
-        time_remaining = enrollment.effective_time_remaining
-        time_remaining_seconds = (
-            max(0, time_remaining.total_seconds()) if time_remaining else 0
+    @sync_to_async
+    @transaction.atomic
+    def _pause_timer(self):
+        enroll = self.enrollment
+        if enroll.present:
+            enroll.handle_disconnect()
+            # revoke any scheduled submit task
+            try:
+                from celery import current_app
+
+                current_app.control.revoke(f"submit_exam_{enroll.id}", terminate=True)
+            except Exception as e:
+                logger.error(f"Failed to revoke submit task: {e}")
+        return True
+
+    async def send_status(self,data=None):
+        data = await self._gather_status()
+        event = await self._pop_redis_event(self.enrollment.id)
+        if event:
+            data["event"] = event
+        await self.send_json(
+            {"type": "status", "data": data, "timestamp": timezone.now().isoformat()},
         )
 
-        # Get allocated time in seconds
-        allocated_seconds = (
-            enrollment.time_remaining.total_seconds()
-            if enrollment.time_remaining
-            else 0
-        )
-
+    @sync_to_async
+    def _gather_status(self):
+        enroll = self.enrollment
+        enroll.refresh_from_db()
+        sess = enroll.session
         return {
-            "status": enrollment.status,
-            "is_paused": enrollment.is_paused,
-            "session_paused": enrollment.session.is_session_paused,
-            "session_status": enrollment.session.status,
-            "time_remaining": time_remaining_seconds,
-            "session_id": enrollment.session.id,
-            "total_time_allocated": allocated_seconds,
-            "effective_time_remaining": time_remaining_seconds,
-            "last_active_timestamp": timezone.localtime(
-                enrollment.last_active_timestamp,
-            ).strftime("%Y-%m-%d %H:%M:%S")
-            if enrollment.last_active_timestamp
-            else None,
-            "session_start_time": enrollment.session.start_time.isoformat(),
-            "session_end_time": enrollment.session.end_time.isoformat()
-            if enrollment.session.end_time
-            else None,
-            "session_effective_end_time": enrollment.session.effective_end_time.isoformat()
-            if enrollment.session.effective_end_time
+            "status": enroll.status,
+            "present": enroll.present,
+            "session_status": sess.status,
+            "time_remaining": max(0, enroll.effective_time_remaining.total_seconds()),
+            "session_effective_end": sess.expected_end.isoformat()
+            if sess.expected_end
             else None,
         }
 
-    async def send_error(self, message: str):
-        await self.send_json({"type": "error", "message": message})
+    @sync_to_async
+    def _pop_redis_event(self, eid):
+        client = get_redis_client()
+        key = f"exam_event_{eid}"
+        raw = client.get(key)
+        if raw:
+            client.delete(key)
+            try:
+                return json.loads(raw)
+            except Exception:
+                logger.error("Invalid JSON event for %s", key)
+        return None
 
-    async def send_json(self, data: dict):
-        await self.send(text_data=json.dumps(data))
+    async def send_error(self, msg):
+        logger.error(msg)
+        await self.send_json({"type": "error", "message": msg})

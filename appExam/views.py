@@ -9,12 +9,11 @@ from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from appAuthentication.models import Candidate
 from appExam.models import Answer
 from appExam.models import Question
 from appExam.models import StudentAnswer
 from appExam.models import StudentExamEnrollment
-
-from .models import Candidate
 
 
 # Helper function to get candidate's active enrollment (DRY principle)
@@ -96,7 +95,9 @@ def get_exam_session_view(request):
 
     time_remaining_minutes = None
     if enrollment.time_remaining:
-        time_remaining_minutes = int(enrollment.effective_time_remaining.total_seconds() // 60)  # noqa: E501
+        time_remaining_minutes = int(
+            enrollment.effective_time_remaining.total_seconds() // 60,
+        )
 
     # Build response data - all data already loaded via select_related
     session_data = {
@@ -471,7 +472,6 @@ def submit_answer_view(request):  # noqa: PLR0911
     )
 
 
-
 # ------------------------- Get Exam Review -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -484,8 +484,12 @@ def get_exam_review(request):
         candidate = Candidate.objects.get(user=request.user)
 
         enrollment = (
-            StudentExamEnrollment.objects.filter(candidate=candidate, status="submitted")  # noqa: E501
-            .select_related("session__exam__program__institute", "session__exam__subject")  # noqa: E501
+            StudentExamEnrollment.objects.filter(
+                candidate=candidate, status="submitted",
+            )
+            .select_related(
+                "session__exam__program__institute", "session__exam__subject",
+            )
             .order_by("-session__end_time")
             .first()
         )
@@ -538,7 +542,9 @@ def get_exam_review(request):
                 answers_data = [
                     {
                         "options": ans_map[aid].text,
-                        "answer_number": answer_letters[idx] if idx < len(answer_letters) else str(idx + 1),  # noqa: E501
+                        "answer_number": answer_letters[idx]
+                        if idx < len(answer_letters)
+                        else str(idx + 1),
                     }
                     for idx, aid in enumerate(randomized_ids)
                     if aid in ans_map
@@ -554,11 +560,12 @@ def get_exam_review(request):
                 if sa and sa.selected_answer_id in randomized_ids:
                     pos = randomized_ids.index(sa.selected_answer_id)
                     entry["student_answer"] = (
-                        answer_letters[pos] if pos < len(answer_letters) else str(pos + 1)  # noqa: E501
+                        answer_letters[pos]
+                        if pos < len(answer_letters)
+                        else str(pos + 1)
                     )
 
                 questions_data.append(entry)
-
 
         session = enrollment.session
         exam = session.exam
@@ -568,7 +575,9 @@ def get_exam_review(request):
             "subject": exam.subject.name if exam.subject else None,
             "total_marks": exam.total_marks,
             "session_id": session.id,
-            "start_time": session.start_time.isoformat() if session.start_time else None,  # noqa: E501
+            "start_time": session.start_time.isoformat()
+            if session.start_time
+            else None,
             "end_time": session.end_time.isoformat() if session.end_time else None,
             "submitted_at": enrollment.updated_at.isoformat(),
         }
@@ -590,8 +599,6 @@ def get_exam_review(request):
             {"error": "Candidate profile not found", "status": 404},
             status=status.HTTP_404_NOT_FOUND,
         )
-
-
 
 
 # ------------------------- complete and send Exam submission -------------------------
