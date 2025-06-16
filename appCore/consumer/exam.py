@@ -1,12 +1,12 @@
 import asyncio
 import json
-from datetime import timezone
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
+from django.utils import timezone
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import UntypedToken
@@ -267,7 +267,8 @@ class ExamConsumer(AsyncWebsocketConsumer):
 
             try:
                 student_answer_obj = StudentAnswer.objects.get(
-                    enrollment=enrollment, question=question,
+                    enrollment=enrollment,
+                    question=question,
                 )
                 if student_answer_obj.selected_answer:
                     # Find which answer letter corresponds to the selected answer
@@ -436,7 +437,8 @@ class ExamConsumer(AsyncWebsocketConsumer):
 
                             # Convert answer ID back to letter
                             randomized_answer_ids = answer_order.get(
-                                str(question_id), [],
+                                str(question_id),
+                                [],
                             )
                             selected_answer_id = student_answer.selected_answer.id
 
@@ -465,7 +467,8 @@ class ExamConsumer(AsyncWebsocketConsumer):
                     "answered_count": answered_count,
                     "unanswered_count": total_questions - answered_count,
                     "completion_percentage": round(
-                        (answered_count / total_questions) * 100, 2,
+                        (answered_count / total_questions) * 100,
+                        2,
                     )
                     if total_questions > 0
                     else 0,

@@ -4,6 +4,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from appAuthentication.utils.upload_to_institute import image_upload_to_institute
 from appInstitutions.models import Institute
 
 
@@ -24,14 +25,12 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_admin", True)
         return self.create_user(email, password, **extra_fields)
 
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     is_staff = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     is_candidate = models.BooleanField(default=False)
-    admin_password2 = models.CharField(max_length=128, blank=True, null=True)
-
-    # Store second admin password (optional)
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)  # noqa: DJ001
 
     USERNAME_FIELD = "email"
@@ -41,6 +40,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
 
 class Candidate(models.Model):
     class VerificationStatus(models.TextChoices):
@@ -86,6 +86,11 @@ class Candidate(models.Model):
     program_id = models.IntegerField()
     program = models.CharField(max_length=100)
     generated_password = models.CharField(max_length=128)
+    profile_image = models.ImageField(
+        upload_to=image_upload_to_institute,
+        blank=True,
+        null=True,
+    )
     institute = models.ForeignKey(
         Institute,
         on_delete=models.CASCADE,

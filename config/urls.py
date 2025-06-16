@@ -10,6 +10,8 @@ from django.views import defaults as default_views
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 
+from appAuthentication.utils.biometric_view import get_candidate_details
+from appAuthentication.utils.biometric_view import webcam_capture_view
 from appAuthentication.views import admin_register_view
 from appAuthentication.views import custom_admin_login_view
 from appCore.views import log_view
@@ -17,7 +19,6 @@ from appCore.views import log_view
 admin.site.site_header = "Exam Admin"
 admin.site.site_title = "Admin"
 admin.site.index_title = "Dashboard"
-
 
 
 urlpatterns = [
@@ -29,10 +30,22 @@ urlpatterns = [
         f"{settings.ADMIN_URL}flows/exam-creation/",
         include("appCore.flows.flow_1_handelingExamCreation.flows_urls"),
     ),
-    path("admin/logs/", log_view,name="log_view"),
+
+    # URL FOR AJAX CALLBACK
+    path(
+        "biometric/candidate-details/",
+        get_candidate_details,
+        name="biometric_candidate_details",
+    ),
+    # biometric VIEW for webcam capture
+    path(
+        "biometric/webcam-capture/",
+        admin.site.admin_view(webcam_capture_view),
+        name="biometric-webcam-capture",
+    ),
+    path("admin/logs/", log_view, name="log_view"),
     path("institute/register/", admin_register_view, name="admin_register"),
     path("institute/login/", custom_admin_login_view, name="admin_login"),
-
     path(settings.ADMIN_URL, admin.site.urls),
     # Monitoring
     path("", include("django_prometheus.urls")),
