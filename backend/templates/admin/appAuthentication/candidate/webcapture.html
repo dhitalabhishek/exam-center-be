@@ -1,8 +1,21 @@
-{% extends 'admin/base_site.html' %}
 {% load static %}
+<script src="{% static 'appAuthentication/mfs100/jquery-1.8.2.js' %}"></script>
+<script src="{% static 'appAuthentication/mfs100/mfs100-9.0.2.6.js' %}"></script>
+{% load i18n %}
+
+{# remove the header title #}
+{% block branding_title %}
+
+{% endblock %}
+
+{# remove the header logo #}
+{% block branding_logo %}
+
+{% endblock %}
 
 {# remove the header branding #}
 {% block branding %}
+
 {% endblock %}
 
 {# remove the top global nav (user/menu) #}
@@ -11,6 +24,7 @@
 
 {# remove the breadcrumb trail #}
 {% block breadcrumbs %}
+
 {% endblock %}
 
 {# remove the entire sidebar navigation #}
@@ -18,382 +32,991 @@
 {% endblock %}
 
 {% block sidebar %}
+
 {% endblock %}
 
-{% block title %}
-Webcam Capture
-{% endblock %}
+<title>BioMetric Capture System</title>
 
 {% block extrahead %}
-{{ block.super }}
-<style>
-/* hide header bar */
-#header, .breadcrumbs-wrapper { display: none !important; }
-/* hide sidebar container */
-#sidebar, #sidebar-toggle, .module.sidebar-module { display: none !important; }
-/* make content full-width */
-#content { margin-left: 0 !important; }
-
-.candidate-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.candidate-card:hover {
-    background-color: #f8f9fa;
-    border-color: #007bff;
-}
-
-.candidate-card.selected {
-    background-color: #e3f2fd;
-    border-color: #2196f3;
-    border-width: 2px;
-}
-
-.candidate-details {
-    display: none;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #eee;
-}
-
-.candidate-details.show {
-    display: block;
-}
-
-.capture-section {
-    display: none;
-    margin-top: 20px;
-    padding: 20px;
-    border: 2px dashed #007bff;
-    border-radius: 8px;
-    background-color: #f8f9fa;
-}
-
-.capture-section.show {
-    display: block;
-}
-
-.search-results {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.step-indicator {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 30px;
-}
-
-.step {
-    display: flex;
-    align-items: center;
-    margin: 0 10px;
-}
-
-.step-number {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background-color: #ddd;
-    color: #666;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 8px;
-    font-weight: bold;
-}
-
-.step.active .step-number {
-    background-color: #007bff;
-    color: white;
-}
-
-.step.completed .step-number {
-    background-color: #28a745;
-    color: white;
-}
-</style>
+  <link href="{% static '/css/bootstrap.min.css' %}" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="{% static '/css/font-awesome.css' %}" type="text/css" />
+  <style>
+    /* Hide Django admin elements */
+    #header,
+    .breadcrumbs-wrapper,
+    #sidebar,
+    #sidebar-toggle,
+    .module.sidebar-module {
+      display: none !important;
+    }
+    .toast {
+      font-family: sans-serif;
+      font-size: 14px;
+  }
+    
+    #header,
+    .breadcrumbs-wrapper,
+    #sidebar,
+    #sidebar-toggle,
+    .module.sidebar-module,
+    #container,
+    #content-main,
+    #content-related,
+    #nav-sidebar,
+    #user-tools,
+    #branding {
+      display: none !important;
+    }
+    
+    /* Remove body padding added by admin */
+    body {
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    
+    #content {
+      margin-left: 0 !important;
+      padding: 0 !important;
+    }
+    
+    :root {
+      --primary: #2c3e50;
+      --secondary: #3498db;
+      --accent: #e74c3c;
+      --light: #ecf0f1;
+      --dark: #2c3e50;
+      --success: #2ecc71;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      height: 100vh;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .app-container {
+      display: flex;
+      height: 100vh;
+      max-width: 1600px;
+      margin: 0 auto;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .sidebar {
+      width: 380px;
+      background: var(--primary);
+      color: white;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      overflow-y: auto;
+    }
+    
+    .header {
+      background: white;
+      padding: 20px;
+      border-bottom: 1px solid #eee;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    
+    .logo {
+      font-weight: 700;
+      font-size: 24px;
+      color: var(--secondary);
+      margin-bottom: 20px;
+    }
+    
+    .logo i {
+      color: var(--accent);
+      margin-right: 10px;
+    }
+    
+    .search-container {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .search-container .form-control {
+      background: rgba(255, 255, 255, 0.9);
+      border: none;
+      color: #333;
+    }
+    
+    .search-container .btn {
+      background: var(--secondary);
+      border: none;
+    }
+    
+    .candidate-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .candidate-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+    
+    .candidate-card:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+    
+    .candidate-card.selected {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: var(--secondary);
+    }
+    
+    .candidate-avatar {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #3498db;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      overflow: hidden;
+    }
+    
+    .candidate-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .candidate-info {
+      flex: 1;
+      margin-left: 15px;
+    }
+    
+    .candidate-name {
+      font-weight: 600;
+      font-size: 18px;
+      margin-bottom: 5px;
+    }
+    
+    .candidate-symbol {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+    
+    .capture-container {
+      display: flex;
+      flex: 1;
+      padding: 10px;
+      gap: 10px;
+      overflow: auto;
+    }
+    
+    .photo-section {
+      flex: 1;
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .fingerprint-section {
+      flex: 1;
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .section-title-main {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .section-title-main i {
+      color: var(--secondary);
+    }
+    
+    .preview-container {
+      background: #f8f9fa;
+      border-radius: 10px;
+      border: 2px dashed #ddd;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      overflow: hidden;
+      position: relative;
+      min-height: 300px;
+    }
+    
+    .camera-feed {
+      width: 100%;
+      height: 100%;
+      background: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    
+    .fingerprint-preview {
+      width: 200px;
+      height: 250px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      position: relative;
+      overflow: hidden;
+      margin: 0 auto 20px;
+    }
+    
+    .fingerprint-placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 14px;
+      text-align: center;
+    }
+    
+    .fingerprint-placeholder i {
+      font-size: 48px;
+      margin-bottom: 15px;
+      color: #ccc;
+    }
+    
+    .capture-controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    
+    .capture-btn {
+      padding: 12px 25px;
+      border-radius: 8px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-primary {
+      background: var(--secondary);
+      color: white;
+    }
+    
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+    
+    .btn-danger {
+      background: var(--accent);
+      color: white;
+    }
+    
+    .btn-outline {
+      background: transparent;
+      border: 2px solid var(--secondary);
+      color: var(--secondary);
+    }
+    
+    .capture-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-top: 20px;
+      font-size: 14px;
+      gap: 8px;
+    }
+    
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+    
+    .status-dot.active {
+      background: var(--success);
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+      100% {
+        opacity: 1;
+      }
+    }
+    
+    .finger-row {
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    
+    .finger-block {
+      text-align: center;
+    }
+    
+    .finger-label {
+      margin-top: 10px;
+      font-weight: 500;
+      color: var(--primary);
+    }
+    
+    .progress-container {
+      height: 6px;
+      background: #eee;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background: var(--secondary);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    
+    .quality-indicator {
+      font-size: 13px;
+      color: #666;
+      margin-top: 5px;
+      text-align: center;
+    }
+    
+    .save-section {
+      padding: 20px;
+      border-top: 1px solid #eee;
+      display: flex;
+      justify-content: flex-end;
+    }
+    
+    .save-btn {
+      padding: 12px 35px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .scanner-surface {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: white;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    
+    .fingerprint-preview.active .scanner-surface {
+      opacity: 1;
+    }
+    
+    .scanner-animation {
+      width: 150px;
+      height: 200px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    
+    .scan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--secondary);
+      animation: scan 2s linear infinite;
+    }
+    
+    @keyframes scan {
+      0% {
+        top: 0;
+      }
+      100% {
+        top: 100%;
+      }
+    }
+    
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #999;
+      padding: 30px;
+    }
+    
+    .empty-state i {
+      font-size: 48px;
+      margin-bottom: 15px;
+      color: #ddd;
+    }
+    
+    #video,
+    #canvas {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    
+    .selected-candidate-info {
+      background: var(--light);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid var(--secondary);
+    }
+    
+    .alert-success {
+      background: #d4edda;
+      color: #155724;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #c3e6cb;
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid" style="max-width: 900px; margin-top: 2rem;">
-    
-    <!-- Step Indicator -->
-    <div class="step-indicator">
-        <div class="step" id="step1" data-step="1">
-            <div class="step-number">1</div>
-            <span>Search Candidate</span>
-        </div>
-        <div class="step" id="step2" data-step="2">
-            <div class="step-number">2</div>
-            <span>Select Candidate</span>
-        </div>
-        <div class="step" id="step3" data-step="3">
-            <div class="step-number">3</div>
-            <span>Capture Photo</span>
-        </div>
-    </div>
+  <div class="app-container">
+    <!-- Left sidebar with candidate search and list -->
+    <div class="sidebar">
+      <div class="logo">
+        <i class="fas fa-fingerprint"></i> BioCapture
+      </div>
 
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Capture Candidate Profile Image</h3>
-        </div>
-        <div class="card-body">
-            
-            {% if success %}
-            <div class="alert alert-success">
-                Photo captured and saved for <strong>{{ selected_candidate.first_name }} {{ selected_candidate.last_name }}</strong> (Symbol: {{ selected_candidate.symbol_number }})
-            </div>
-            {% endif %}
+      <div class="search-container">
+        <form method="post" id="searchForm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="search" />
+          <div class="input-group">
+            <input type="text" class="form-control" placeholder="Search by name, symbol or email..." id="searchInput" name="search_query" value="{{ search_query|default:'' }}" />
+            <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i></button>
+          </div>
+        </form>
+      </div>
 
-            <!-- Step 1: Search -->
-            <div id="search-section">
-                <h5>Step 1: Search Candidate</h5>
-                <form method="post" class="mb-4">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="search">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <input type="text" 
-                                   name="search_query" 
-                                   id="search_query" 
-                                   class="form-control" 
-                                   placeholder="Search by symbol number, name, or email..."
-                                   value="{{ search_query|default:'' }}"
-                                   required>
-                        </div>
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-primary w-100">Search</button>
-                        </div>
-                    </div>
-                </form>
-            </div>
+      <div class="section-title">
+        <i class="fas fa-users"></i> Candidates
+      </div>
 
-            <!-- Step 2: Search Results -->
-            {% if candidates %}
-            <div id="results-section">
-                <h5>Step 2: Select Candidate ({{ candidates|length }} result{{ candidates|length|pluralize }} found)</h5>
-                <div class="search-results">
-                    {% for candidate in candidates %}
-                    <div class="candidate-card" data-candidate-id="{{ candidate.id }}" onclick="selectCandidate({{ candidate.id }})">
-                        <div class="row">
-                            <div class="col-md-2">
-                                {% if candidate.profile_image %}
-                                <img src="{{ candidate.profile_image.url }}" alt="Profile" class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;">
-                                {% else %}
-                                <div style="width: 60px; height: 60px; background-color: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-user" style="color: #ccc;"></i>
-                                </div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-10">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <strong>{{ candidate.first_name }} {{ candidate.last_name }}</strong>
-                                        <br><small class="text-muted">Symbol: {{ candidate.symbol_number }}</small>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <small class="text-muted">{{ candidate.email }}</small>
-                                        <br><small class="text-muted">Click to expand details</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Expanded Details (hidden by default) -->
-                        <div class="candidate-details" id="details-{{ candidate.id }}">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <strong>Contact Information:</strong><br>
-                                    Email: {{ candidate.email }}<br>
-                                    {% if candidate.phone %}Phone: {{ candidate.phone }}<br>{% endif %}
-                                </div>
-                                <div class="col-md-6">
-                                    <strong>Election Details:</strong><br>
-                                    Symbol Number: {{ candidate.symbol_number }}<br>
-                                    {% if candidate.constituency %}Constituency: {{ candidate.constituency }}<br>{% endif %}
-                                    {% if candidate.party %}Party: {{ candidate.party }}<br>{% endif %}
-                                </div>
-                            </div>
-                            <div class="mt-2">
-                                <button type="button" class="btn btn-success" onclick="enableCapture({{ candidate.id }})">
-                                    Select This Candidate
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
+      <div class="candidate-list">
+        {% if candidates %}
+          {% for candidate in candidates %}
+            <div class="candidate-card" data-candidate-id="{{ candidate.id }}" onclick="selectCandidate({{ candidate.id }})">
+              <div class="d-flex align-items-center">
+                <div class="candidate-avatar">
+                  {% if candidate.profile_image %}
+                    <img src="{{ candidate.profile_image.url }}" alt="Profile" />
+                  {% else %}
+                    {{ candidate.first_name.0 }}{{ candidate.last_name.0 }}
+                  {% endif %}
                 </div>
+                <div class="candidate-info">
+                  <div class="candidate-name">{{ candidate.first_name }} {{ candidate.last_name }}</div>
+                  <div class="candidate-symbol">Symbol: {{ candidate.symbol_number }}</div>
+                  <div class="candidate-symbol">{{ candidate.email }}</div>
+                </div>
+              </div>
             </div>
-            {% endif %}
-
-            <!-- Step 3: Camera Capture Section -->
-            <div id="capture-section" class="capture-section">
-                <h5>Step 3: Capture Photo</h5>
-                <div id="selected-candidate-info" class="mb-3"></div>
-                
-                <form method="post" id="capture-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="capture">
-                    <input type="hidden" name="candidate_id" id="selected_candidate_id">
-                    <input type="hidden" name="image_data" id="image_data">
-                    
-                    <div class="text-center">
-                        <video id="video" width="320" height="240" class="border rounded mb-3" autoplay></video>
-                        <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
-                        <br>
-                        <div class="d-flex gap-2 justify-content-center">
-                            <button type="button" class="btn btn-primary" onclick="startCamera()" id="start-camera-btn">
-                                Start Camera
-                            </button>
-                            <button type="button" class="btn btn-warning" onclick="capture()" id="capture-btn" style="display: none;">
-                                Capture Photo
-                            </button>
-                            <button type="submit" id="submit-btn" class="btn btn-success" style="display: none;">
-                                Save Photo
-                            </button>
-                            <button type="button" class="btn btn-secondary" onclick="resetCapture()" id="reset-btn" style="display: none;">
-                                Retake
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-search"></i>
+            <p>Search for candidates to get started</p>
+          </div>
+        {% endif %}
+      </div>
     </div>
-</div>
 
-<script>
-let currentStep = 1;
+    <!-- Main content area -->
+    <div class="main-content">
+      {% if success %}
+        <div class="alert-success">
+          Photo captured and saved for <strong>{{ selected_candidate.first_name }} {{ selected_candidate.last_name }}</strong> (Symbol: {{ selected_candidate.symbol_number }})
+        </div>
+      {% endif %}
+
+      <div id="capture-content" style="display: none;">
+        <div id="selected-candidate-info" class="selected-candidate-info"></div>
+
+        <div class="capture-container">
+          <!-- Photo capture section -->
+          <div class="photo-section">
+            <div class="section-title-main">
+              <i class="fas fa-camera"></i> Photo Capture
+            </div>
+
+            <div class="preview-container">
+              <div class="camera-feed">
+                <video id="video" width="320" height="240" class="border rounded" autoplay muted style="display: none;"></video>
+                <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+                <div class="empty-state" id="camera-placeholder">
+                  <i class="fas fa-camera"></i>
+                  <h4>Camera Feed</h4>
+                  <p class="mt-2">Camera will activate when you select a candidate</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="status-indicator">
+              <div class="status-dot" id="camera-status"></div>
+              <span id="camera-status-text">Select a candidate to activate camera</span>
+            </div>
+
+            <div class="capture-controls">
+              <button class="capture-btn btn-primary" onclick="capturePhoto()" disabled id="capture-photo-btn"><i class="fas fa-camera"></i> Capture Photo</button>
+              <button class="capture-btn btn-outline" onclick="resetPhoto()" id="retake-btn"><i class="fas fa-redo"></i> Retake</button>
+            </div>
+          </div>
+
+          <!-- Fingerprint capture section -->
+          <div class="fingerprint-section">
+            <div class="section-title-main">
+              <i class="fas fa-fingerprint"></i> Fingerprint Capture
+            </div>
+
+            <div class="finger-row">
+              <div class="finger-block">
+                <div class="fingerprint-preview" id="fp-left-preview">
+                  <img id="fpImageLeft" class="img-thumbnail" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                  <div class="fingerprint-placeholder">
+                    <i class="fas fa-fingerprint"></i>
+                    Left Thumb
+                  </div>
+                  <div class="scanner-surface">
+                    <div class="scanner-animation">
+                      <div class="scan-line"></div>
+                    </div>
+                    <p>Place your finger on the sensor</p>
+                  </div>
+                </div>
+                <div class="finger-label">Left Thumb</div>
+                <div class="progress-container">
+                  <div class="progress-bar" id="left-progress" style="width: 0%"></div>
+                </div>
+                <div class="quality-indicator" id="left-quality">Ready to capture</div>
+                <button class="btn btn-sm btn-primary mt-2" onclick="fpCapture('left')" disabled id="capture-left-btn">Capture Left</button>
+              </div>
+
+              <div class="finger-block">
+                <div class="fingerprint-preview" id="fp-right-preview">
+                  <img id="fpImageRight" class="img-thumbnail" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                  <div class="fingerprint-placeholder">
+                    <i class="fas fa-fingerprint"></i>
+                    Right Thumb
+                  </div>
+                  <div class="scanner-surface">
+                    <div class="scanner-animation">
+                      <div class="scan-line"></div>
+                    </div>
+                    <p>Place your finger on the sensor</p>
+                  </div>
+                </div>
+                <div class="finger-label">Right Thumb</div>
+                <div class="progress-container">
+                  <div class="progress-bar" id="right-progress" style="width: 0%"></div>
+                </div>
+                <div class="quality-indicator" id="right-quality">Ready to capture</div>
+                <button class="btn btn-sm btn-primary mt-2" onclick="fpCapture('right')" disabled id="capture-right-btn">Capture Right</button>
+              </div>
+            </div>
+
+            <div class="status-indicator">
+              <div class="status-dot" id="fp-status"></div>
+              <span id="fp-status-text">Select a candidate to begin fingerprint capture</span>
+            </div>
+
+            <input type="text" id="fpscore" class="form-control mt-2" placeholder="Quality / NFIQ" readonly style="display: none;" />
+          </div>
+        </div>
+
+        <div class="save-section">
+          <button class="capture-btn btn-success save-btn" onclick="saveAllData()" disabled id="save-all-btn"><i class="fas fa-save"></i> Save All Data</button>
+        </div>
+      </div>
+
+      <div id="no-candidate-selected" class="empty-state" style="height: 100%; display: flex;">
+        <i class="fas fa-user-plus"></i>
+        <h3>No Candidate Selected</h3>
+        <p>Please search and select a candidate from the sidebar to begin biometric capture</p>
+      </div>
+    </div>
+  </div>
+
+  <form id="fpForm" method="post" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="biometric" />
+    <input type="hidden" name="candidate_id" id="fp_candidate_id" />
+    <input type="hidden" name="bitmap_data" id="bitmap_data" />
+    <input type="hidden" name="hand" id="fp_hand" />
+  </form>
+
+  <form id="photoForm" method="post" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="capture" />
+    <input type="hidden" name="candidate_id" id="photo_candidate_id" />
+    <input type="hidden" name="image_data" id="image_data" />
+  </form>
+
+  <script>
 let selectedCandidateId = null;
 let cameraStream = null;
+let currentCandidate = null;
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const imageDataInput = document.getElementById('image_data');
 
-// Update step indicator
-function updateStepIndicator(step) {
-    document.querySelectorAll('.step').forEach(s => {
-        s.classList.remove('active', 'completed');
-        const stepNum = parseInt(s.dataset.step);
-        if (stepNum < step) {
-            s.classList.add('completed');
-        } else if (stepNum === step) {
-            s.classList.add('active');
-        }
+function showNotification(message, type = "success") {
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.innerText = message;
+
+    Object.assign(toast.style, {
+        position: "fixed",
+        top: "20px",
+        right: "20px",
+        zIndex: 9999,
+        padding: "12px 20px",
+        borderRadius: "6px",
+        backgroundColor: type === "success" ? "#28a745" : "#dc3545",
+        color: "white",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+        transition: "opacity 0.3s ease"
     });
-    currentStep = step;
+
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = 0;
+        setTimeout(() => toast.remove(), 500);
+    }, 3000);
 }
 
-// Initialize
-{% if candidates %}
-updateStepIndicator(2);
-{% else %}
-updateStepIndicator(1);
-{% endif %}
 
-// Select candidate and show details
+// Candidate selection logic
 function selectCandidate(candidateId) {
-    // Clear previous selections
-    document.querySelectorAll('.candidate-card').forEach(card => {
-        card.classList.remove('selected');
-    });
-    document.querySelectorAll('.candidate-details').forEach(details => {
-        details.classList.remove('show');
-    });
+    // Remove previous selection
+    document.querySelectorAll('.candidate-card').forEach(card => card.classList.remove('selected'));
     
-    // Select current candidate
+    // Select new candidate
     const selectedCard = document.querySelector(`[data-candidate-id="${candidateId}"]`);
     selectedCard.classList.add('selected');
     
-    // Show details
-    const details = document.getElementById(`details-${candidateId}`);
-    details.classList.add('show');
-    
     selectedCandidateId = candidateId;
-}
-
-// Enable capture mode
-function enableCapture(candidateId) {
-    selectedCandidateId = candidateId;
-    document.getElementById('selected_candidate_id').value = candidateId;
     
-    // Get candidate info from the card
-    const candidateCard = document.querySelector(`[data-candidate-id="${candidateId}"]`);
-    const candidateName = candidateCard.querySelector('strong').textContent;
-    const symbolNumber = candidateCard.querySelector('small').textContent;
+    // Get candidate info
+    const candidateName = selectedCard.querySelector('.candidate-name').textContent;
+    const candidateSymbol = selectedCard.querySelector('.candidate-symbol').textContent;
+    
+    currentCandidate = {
+        id: candidateId,
+        name: candidateName,
+        symbol: candidateSymbol
+    };
+    
+    // Show capture interface
+    document.getElementById('no-candidate-selected').style.display = 'none';
+    document.getElementById('capture-content').style.display = 'block';
     
     // Update selected candidate info
     document.getElementById('selected-candidate-info').innerHTML = `
-        <div class="alert alert-info">
-            <strong>Selected Candidate:</strong> ${candidateName}<br>
-            <strong>${symbolNumber}</strong>
+        <div class="d-flex align-items-center gap-3">
+            <div class="candidate-avatar">
+                ${candidateName.split(' ').map(n => n[0]).join('')}
+            </div>
+            <div>
+                <h5 class="mb-1">${candidateName}</h5>
+                <p class="mb-0 text-muted">${candidateSymbol}</p>
+            </div>
         </div>
     `;
     
-    // Show capture section
-    document.getElementById('capture-section').classList.add('show');
-    updateStepIndicator(3);
+    // Set form values
+    document.getElementById('fp_candidate_id').value = candidateId;
+    document.getElementById('photo_candidate_id').value = candidateId;
     
-    // Scroll to capture section
-    document.getElementById('capture-section').scrollIntoView({ behavior: 'smooth' });
+    // Enable capture buttons
+    enableCaptureInterface();
+    
+    // Start camera
+    startCamera();
+}
+
+function enableCaptureInterface() {
+    // Enable photo capture
+    document.getElementById('capture-photo-btn').disabled = false;
+    document.getElementById('camera-status').classList.add('active');
+    document.getElementById('camera-status-text').textContent = 'Camera ready';
+    
+    // Enable fingerprint capture
+    document.getElementById('capture-left-btn').disabled = false;
+    document.getElementById('capture-right-btn').disabled = false;
+    document.getElementById('fp-status').classList.add('active');
+    document.getElementById('fp-status-text').textContent = 'Ready to capture fingerprints';
+    
+    // Enable save button
+    document.getElementById('save-all-btn').disabled = false;
 }
 
 // Camera functions
 function startCamera() {
-    navigator.mediaDevices
-        .getUserMedia({ video: true })
-        .then((stream) => {
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
             cameraStream = stream;
             video.srcObject = stream;
-            document.getElementById('start-camera-btn').style.display = 'none';
-            document.getElementById('capture-btn').style.display = 'inline-block';
+            video.style.display = 'block';
+            document.getElementById('camera-placeholder').style.display = 'none';
         })
-        .catch((err) => {
-            console.error('Error accessing camera:', err);
-            alert('Error accessing camera. Please check permissions.');
+        .catch(err => {
+            console.error('Camera error:', err);
+            document.getElementById('camera-status-text').textContent = 'Unable to access camera';
+            document.getElementById('camera-status').classList.remove('active');
         });
 }
 
-function capture() {
+function capturePhoto() {
+    if (!video.srcObject) {
+        alert('Camera not available');
+        return;
+    }
+    
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     imageDataInput.value = canvas.toDataURL('image/png');
     
-    // Show captured image preview
-    const capturedImage = canvas.toDataURL('image/png');
+    // Show captured image
     video.style.display = 'none';
     canvas.style.display = 'block';
     
-    // Update buttons
-    document.getElementById('capture-btn').style.display = 'none';
-    document.getElementById('submit-btn').style.display = 'inline-block';
-    document.getElementById('reset-btn').style.display = 'inline-block';
+    // Submit form
+    document.getElementById('photoForm').submit();
+    alert("hello")
 }
 
-function resetCapture() {
-    // Reset to video view
-    video.style.display = 'block';
+function resetPhoto() {
     canvas.style.display = 'none';
+    video.style.display = 'block';
     imageDataInput.value = '';
-    
-    // Update buttons
-    document.getElementById('capture-btn').style.display = 'inline-block';
-    document.getElementById('submit-btn').style.display = 'none';
-    document.getElementById('reset-btn').style.display = 'none';
 }
 
-// Clean up camera stream when page unloads
-window.addEventListener('beforeunload', function() {
+// Fingerprint capture logic
+function fpCapture(hand) {
+    if (!selectedCandidateId) {
+        alert('Please select a candidate first');
+        return;
+    }
+    
+    const preview = document.getElementById(`fp-${hand}-preview`);
+    const progressBar = document.getElementById(`${hand}-progress`);
+    const qualityIndicator = document.getElementById(`${hand}-quality`);
+    
+    // Show scanning animation
+    preview.classList.add('active');
+    qualityIndicator.textContent = 'Scanning...';
+    
+    try {
+        const res = CaptureFinger(60, 10);
+        if (!res.httpStaus || res.data.ErrorCode !== "0") {
+            preview.classList.remove('active');
+            qualityIndicator.textContent = 'Capture failed';
+            return alert("Capture error: " + (res.err || res.data.ErrorDescription));
+        }
+
+        const bmp = "data:image/bmp;base64," + res.data.BitmapData;
+        const quality = parseInt(res.data.Quality);
+        const nfiq = res.data.Nfiq;
+        
+        // Update UI
+        const fpImage = document.getElementById(`fpImage${hand.charAt(0).toUpperCase() + hand.slice(1)}`);
+        fpImage.src = bmp;
+        fpImage.style.display = 'block';
+        
+        // Update progress
+        progressBar.style.width = quality + '%';
+        qualityIndicator.textContent = `Quality: ${quality}% | NFIQ: ${nfiq}`;
+        
+        // Hide placeholder
+        preview.querySelector('.fingerprint-placeholder').style.display = 'none';
+        preview.classList.remove('active');
+        
+        // Set form data
+        document.getElementById('bitmap_data').value = bmp;
+        document.getElementById('fp_hand').value = hand;
+        document.getElementById('fpscore').value = `Q: ${quality} NFIQ: ${nfiq}`;
+
+        // Submit form
+        document.getElementById('fpForm').submit();
+        
+    } catch (error) {
+        preview.classList.remove('active');
+        qualityIndicator.textContent = 'Sensor error';
+        alert('Fingerprint sensor error: ' + error.message);
+    }
+}
+
+function saveAllData() {
+    if (!selectedCandidateId) {
+        alert('Please select a candidate first');
+        return;
+    }
+    
+    alert('All biometric data saved successfully!');
+}
+
+// Cleanup camera stream
+window.addEventListener('beforeunload', function () {
     if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
     }
+});
+
+// Initialize interface
+document.addEventListener('DOMContentLoaded', function() {
+    {% if candidates %}
+        // Auto-select first candidate if there are search results
+        const firstCandidate = document.querySelector('.candidate-card');
+        if (firstCandidate) {
+            const candidateId = firstCandidate.getAttribute('data-candidate-id');
+            selectCandidate(parseInt(candidateId));
+        }
+    {% endif %}
+});
+
+// Search form submission
+document.getElementById('searchForm').addEventListener('submit', function(e) {
+    // Allow normal form submission
+});
+
+
+// Handle photo form submit
+document.getElementById('photoForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    formData.append("action", "capture");
+
+    fetch("", {
+        method: "POST",
+        body: formData,
+        headers: {
+            "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
+        },
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification("Photo captured successfully");
+        } else {
+            showNotification("Photo capture failed: " + data.error, "error");
+        }
+    })
+    .catch(err => {
+        showNotification("Photo capture failed: " + err.message, "error");
+    });
+});
+
+// Handle fingerprint form submit
+document.getElementById('fpForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    formData.append("action", "biometric");
+
+    fetch("", {
+        method: "POST",
+        body: formData,
+        headers: {
+            "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
+        },
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Fingerprint (${data.hand}) saved successfully`);
+        } else {
+            showNotification("Fingerprint save failed: " + data.error, "error");
+        }
+    })
+    .catch(err => {
+        showNotification("Fingerprint save failed: " + err.message, "error");
+    });
 });
 </script>
 {% endblock %}

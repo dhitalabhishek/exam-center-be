@@ -35,13 +35,13 @@ urlpatterns = [
     path(
         "biometric/candidate-details/",
         get_candidate_details,
-        name="biometric_candidate_details",
+        name="get_candidate_details",
     ),
     # biometric VIEW for webcam capture
     path(
-        "biometric/webcam-capture/",
+        "biometric/verification/",
         admin.site.admin_view(webcam_capture_view),
-        name="biometric-webcam-capture",
+        name="biometric-verification",
     ),
     path("admin/logs/", log_view, name="log_view"),
     path("institute/register/", admin_register_view, name="admin_register"),

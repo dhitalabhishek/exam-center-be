@@ -24,7 +24,7 @@ class CustomUserAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        return qs.filter(is_admin=True)  # Only admin users
+        return qs.filter(is_admin=True)
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
@@ -32,7 +32,7 @@ class CustomUserAdmin(admin.ModelAdmin):
         return super().get_form(request, obj, **kwargs)
 
 
-admin.site.register(User, CustomUserAdmin)
+admin.site.register(User)
 
 
 @admin.register(Candidate)
