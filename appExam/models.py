@@ -2,6 +2,7 @@
 import logging
 from datetime import timedelta
 
+from ckeditor.fields import RichTextField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -64,6 +65,11 @@ class ExamSession(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default="scheduled",
+    )
+    notice = RichTextField(
+        blank=True,
+        null=True,
+        help_text="Important instructions or notices for the exam session",
     )
 
     # Pause tracking

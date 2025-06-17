@@ -1,6 +1,6 @@
-import os
 import tempfile
 from datetime import timedelta
+from pathlib import Path
 
 from django import forms
 from django.contrib import admin
@@ -14,6 +14,7 @@ from django.shortcuts import render
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.html import escape
 from django.utils.html import format_html
@@ -71,7 +72,7 @@ def enroll_students_view(request, session_id):
         form = EnrollmentRangeForm(session_id, request.POST)
         if form.is_valid():
             range_string = form.cleaned_data["range_string"]
-            hall = form.cleaned_data["hall"]  # Get selected hall object
+            hall = form.cleaned_data["hall"]
 
             # Get or create hall assignment
             hall_assignment, created = HallAndStudentAssignment.objects.get_or_create(
@@ -107,6 +108,7 @@ def enroll_students_view(request, session_id):
         "title": f"Enroll Students for {session}",
         "opts": ExamSession._meta,  # noqa: SLF001
         "has_change_permission": True,
+        "current_time": timezone.localtime(timezone.now()),
     }
 
     return render(request, "admin/enroll_students.html", context)
@@ -147,9 +149,7 @@ class TimeLeftFilter(admin.SimpleListFilter):
         )
 
     def queryset(self, request, queryset):
-        import django.utils.timezone as tz
-
-        now = tz.now()
+        now = timezone.now()
         if self.value() == "<30":
             return queryset.filter(expected_end__lte=now + timedelta(minutes=30))
         if self.value() == "<60":
@@ -159,7 +159,7 @@ class TimeLeftFilter(admin.SimpleListFilter):
 
 @admin.register(ExamSession)
 class ExamSessionAdmin(admin.ModelAdmin):
-    search_fields = ("id","exam_program")
+    search_fields = ("id", "exam_program")
     ordering = ("-base_start",)
     list_display = (
         "id",
@@ -173,7 +173,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
     list_filter = ("status", "exam__program", TimeLeftFilter)
     date_hierarchy = "base_start"
     list_per_page = 10
-    actions = ["bulk_pause", "bulk_resume", "bulk_end", "enroll_students_action"]
+    actions = ["bulk_pause", "bulk_resume", "bulk_end"]
     inlines = [EnrollmentInline]
 
     readonly_fields = (
@@ -198,6 +198,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "total_paused",
         "completed_at",
         "enroll_students_link",
+        "notice",
         "session_controls",
         "updated_at",
         "created_at",
@@ -309,6 +310,23 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
     bulk_end.short_description = "End selected sessions"
 
+    # Custom action for student enrollment
+    def enroll_students_action(self, request, queryset):
+        """Admin action to enroll students for selected exam sessions"""
+        if queryset.count() > 1:
+            self.message_user(
+                request,
+                "Please select only one exam session at a time for enrollment.",
+                level=messages.ERROR,
+            )
+            return None
+
+        session = queryset.first()
+        url = reverse("admin:enroll_students", args=[session.pk])
+        return HttpResponseRedirect(url)
+
+    enroll_students_action.short_description = "📝 Enroll students by symbol range"
+
 
 # Filter for disconnected students
 class DisconnectedFilter(admin.SimpleListFilter):
@@ -385,24 +403,6 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
     force_submit.short_description = "Force submit selected students"
 
 
-def enroll_students_action(modeladmin, request, queryset):
-    """Admin action to enroll students for selected exam sessions"""
-    if queryset.count() > 1:
-        modeladmin.message_user(
-            request,
-            "Please select only one exam session at a time for enrollment.",
-            level=messages.ERROR,
-        )
-        return None
-
-    session = queryset.first()
-    url = reverse("admin:enroll_students", args=[session.pk])
-    return HttpResponseRedirect(url)
-
-
-enroll_students_action.short_description = "📝 Enroll students by symbol range"
-
-
 @admin.register(Answer)
 class AnswerAdmin(admin.ModelAdmin):
     list_display = ("text", "question", "is_correct")
@@ -422,7 +422,7 @@ class QuestionAdmin(admin.ModelAdmin):
             text = escape(ans.text)
             if ans.is_correct:
                 formatted.append(
-                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text} ✅</a>",
+                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text} ✅</a>",  # noqa: E501
                 )
             else:
                 formatted.append(f"<a href='{url}'>{text}</a>")
@@ -461,10 +461,12 @@ class QuestionAdmin(admin.ModelAdmin):
         exam_sessions = ExamSession.objects.all().order_by("-base_start")
 
         context = {
+            **self.admin_site.each_context(request),
             "title": "Select Exam Session",
             "exam_sessions": exam_sessions,
-            "opts": self.model._meta,
+            "opts": self.model._meta,  # noqa: SLF001
             "has_view_permission": True,
+            "current_time": timezone.localtime(timezone.now()),
         }
 
         return TemplateResponse(
@@ -481,7 +483,7 @@ class QuestionAdmin(admin.ModelAdmin):
             form = DocumentUploadForm(request.POST, request.FILES)
             if form.is_valid():
                 document = request.FILES["document"]
-                file_extension = os.path.splitext(document.name)[1].lower()
+                file_extension = Path(document.name).suffix.lower()
 
                 # Store document info in session
                 request.session["document_name"] = document.name
@@ -497,7 +499,6 @@ class QuestionAdmin(admin.ModelAdmin):
 
                     elif file_extension == ".docx":
                         # Handle .docx files
-                        # Save the uploaded file temporarily
                         with tempfile.NamedTemporaryFile(
                             delete=False,
                             suffix=".docx",
@@ -508,8 +509,6 @@ class QuestionAdmin(admin.ModelAdmin):
 
                         try:
                             # Parse the .docx file
-
-                            # First, let's get the content for preview
                             import docx
 
                             doc = docx.Document(temp_file_path)
@@ -522,10 +521,9 @@ class QuestionAdmin(admin.ModelAdmin):
                             request.session["document_content"] = content
 
                         except Exception as e:
-                            # Clean up temp file on error
-                            if os.path.exists(temp_file_path):
-                                os.unlink(temp_file_path)
-                            raise e
+                            if Path(temp_file_path).exists():
+                                Path(temp_file_path).unlink()
+                            raise e  # noqa: TRY201
 
                     else:
                         messages.error(
@@ -538,16 +536,14 @@ class QuestionAdmin(admin.ModelAdmin):
                         )
 
                     # Validate the document format
-                    from .utils.questionParser import (
-                        validate_question_format,  # Adjust import path as needed
-                    )
+                    from .utils.questionParser import validate_question_format
 
                     validation_result = validate_question_format(content)
 
                     if not validation_result["is_valid"]:
                         messages.warning(
                             request,
-                            f"Document format validation: {validation_result['message']}",
+                            f"Document format validation: {validation_result['message']}",  # noqa: E501
                         )
 
                     context = {
@@ -559,6 +555,7 @@ class QuestionAdmin(admin.ModelAdmin):
                         "validation_result": validation_result,
                         "opts": self.model._meta,  # noqa: SLF001
                         "has_view_permission": True,
+                        "current_time": timezone.localtime(timezone.now()),
                     }
 
                     return TemplateResponse(
@@ -567,12 +564,12 @@ class QuestionAdmin(admin.ModelAdmin):
                         context,
                     )
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     messages.error(request, f"Error reading document: {e!s}")
                     # Clean up any temp files
-                    temp_file_path = request.session.get("temp_file_path")
-                    if temp_file_path and os.path.exists(temp_file_path):
-                        os.unlink(temp_file_path)
+                    if temp_file_path and Path(temp_file_path).exists():
+                        Path(temp_file_path).unlink()
+                        request.session.pop("temp_file_path", None)
                         request.session.pop("temp_file_path", None)
         else:
             form = DocumentUploadForm()
@@ -583,8 +580,9 @@ class QuestionAdmin(admin.ModelAdmin):
             "form": form,
             "session": session,
             "supported_formats": [".txt", ".docx"],
-            "opts": self.model._meta,
+            "opts": self.model._meta,  # noqa: SLF001
             "has_view_permission": True,
+            "current_time": timezone.localtime(timezone.now()),
         }
 
         return TemplateResponse(
@@ -613,22 +611,18 @@ class QuestionAdmin(admin.ModelAdmin):
             session = get_object_or_404(ExamSession, id=session_id)
 
             # Parse questions from document
-            if temp_file_path and os.path.exists(temp_file_path):
+            if temp_file_path and Path(temp_file_path).exists():
                 # For .docx files, use the temp file
-                from .utils.questionParser import (
-                    parse_questions_from_docx,  # Adjust import path as needed
-                )
+                from .utils.questionParser import parse_questions_from_docx
 
                 parsed_data = parse_questions_from_docx(temp_file_path)
 
                 # Clean up temp file
-                os.unlink(temp_file_path)
+                Path(temp_file_path).unlink()
                 request.session.pop("temp_file_path", None)
             else:
                 # For .txt files, use the content
-                from .utils.questionParser import (
-                    parse_questions_from_document,  # Adjust import path as needed
-                )
+                from .utils.questionParser import parse_questions_from_document
 
                 parsed_data = parse_questions_from_document(document_content)
 
@@ -657,16 +651,16 @@ class QuestionAdmin(admin.ModelAdmin):
             return JsonResponse(
                 {
                     "success": True,
-                    "message": f"Successfully imported {created_count} questions with answers.",
+                    "message": f"Successfully imported {created_count} questions with answers.",  # noqa: E501
                     "redirect_url": reverse("admin:appExam_question_changelist"),
                 },
             )
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             # Clean up any remaining temp files
             temp_file_path = request.session.get("temp_file_path")
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            if temp_file_path and Path(temp_file_path).exists():
+                Path(temp_file_path).unlink()
                 request.session.pop("temp_file_path", None)
 
             return JsonResponse({"error": str(e)}, status=500)

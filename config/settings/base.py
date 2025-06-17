@@ -365,6 +365,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost",
     "http://69.62.85.89",
+    "https://localhost:8003",
 ]
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that

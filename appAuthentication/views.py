@@ -114,12 +114,6 @@ def candidate_login_view(request):
             "hall_assignment",
             "hall_assignment__hall",
         ).get(candidate=candidate)
-
-        errors = enrollment.validate_timer_state()
-        if errors:
-            logger.error(
-                f"Timer validation failed for enrollment {enrollment.id}: {errors}",  # noqa: G004
-            )
     except StudentExamEnrollment.DoesNotExist:
         return Response(
             {"error": "You are not enrolled in any exam session."},
@@ -191,15 +185,11 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
         )
 
         start_time = (
-            session.start_time.strftime("%H:%M:%S")
-            if session and session.start_time
+            session.base_start.strftime("%H:%M:%S")
+            if session and session.base_start
             else None
         )
-        duration = (
-            int((session.end_time - session.start_time).total_seconds() // 60)
-            if session and session.end_time
-            else None
-        )
+        duration = session.base_duration if session and session.base_duration else None
 
     except StudentExamEnrollment.DoesNotExist:
         shift_id = shift_plan_id = shift_plan_program_id = seat_number = start_time = (
@@ -224,7 +214,7 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
         "biometric_image": get_image_url("candidate.biometric_image"),
         "right_thumb_image": get_image_url("candidate.right_thumb_image"),
         "left_thumb_image": get_image_url("candidate.left_thumb_image"),
-        "seat_number": seat_number,
+        # "seat_number": seat_number,``
         "start_time": start_time,
         "duration": duration,
         "access_token": access_token,

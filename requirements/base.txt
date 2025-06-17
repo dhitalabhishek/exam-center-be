@@ -21,7 +21,6 @@ django-crispy-forms==2.4  # https://github.com/django-crispy-forms/django-crispy
 crispy-bootstrap5==2025.4  # https://github.com/django-crispy-forms/crispy-bootstrap5
 django-compressor==4.5.1  # https://github.com/django-compressor/django-compressor
 django-redis==5.4.0  # https://github.com/jazzband/django-redis
-django-notifications-hq
 # Django REST Framework
 djangorestframework==3.16.0  # https://github.com/encode/django-rest-framework
 djangorestframework-simplejwt==5.3.1  # https://github.com/jazzband/djangorestframework-simplejwt

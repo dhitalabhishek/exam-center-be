@@ -3,6 +3,7 @@
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.decorators import permission_classes
@@ -33,7 +34,7 @@ def get_candidate_active_enrollment(user, require_ongoing=True):  # noqa: FBT002
         if require_ongoing:
             query = query.filter(session__status="ongoing")
 
-        enrollment = query.order_by("session__start_time").first()
+        enrollment = query.order_by("session__base_start").first()
 
         return candidate, enrollment  # noqa: TRY300
 
@@ -69,7 +70,7 @@ def get_exam_session_view(request):
     session = enrollment.session
 
     # CRITICAL: Check if session is ongoing
-    if session.status != "ongoing":
+    if enrollment.status != "active":
         return Response(
             {
                 "error": "Exam session has not started yet.",
@@ -88,16 +89,16 @@ def get_exam_session_view(request):
         cache.set(cache_key, total_questions, 3600)  # Cache for 1 hour
 
     # Calculate duration and time remaining
-    duration_minutes = None
-    if session.start_time and session.end_time:
-        duration = session.end_time - session.start_time
-        duration_minutes = int(duration.total_seconds() // 60)
+    duration_minutes = (
+        int(enrollment.individual_duration.total_seconds() // 60)
+        if enrollment.individual_duration
+        else None
+    )
 
-    time_remaining_minutes = None
-    if enrollment.time_remaining:
-        time_remaining_minutes = int(
-            enrollment.effective_time_remaining.total_seconds() // 60,
-        )
+    time_remaining = enrollment.effective_time_remaining
+    time_remaining_minutes = (
+        int(time_remaining.total_seconds() // 60) if time_remaining else None
+    )
 
     # Build response data - all data already loaded via select_related
     session_data = {
@@ -108,8 +109,9 @@ def get_exam_session_view(request):
         "subject": exam.subject.name if exam.subject else None,
         "total_marks": exam.total_marks,
         "description": exam.description,
-        "start_time": session.start_time.isoformat() if session.start_time else None,
-        "end_time": session.end_time.isoformat() if session.end_time else None,
+        "start_time": enrollment.session_started_at
+        if enrollment.session_started_at
+        else None,
         "duration_minutes": duration_minutes,
         "time_remaining_minutes": time_remaining_minutes,
         "total_questions": total_questions,
@@ -485,12 +487,14 @@ def get_exam_review(request):
 
         enrollment = (
             StudentExamEnrollment.objects.filter(
-                candidate=candidate, status="submitted",
+                candidate=candidate,
+                status="submitted",
             )
             .select_related(
-                "session__exam__program__institute", "session__exam__subject",
+                "session__exam__program__institute",
+                "session__exam__subject",
             )
-            .order_by("-session__end_time")
+            .order_by("-session__base_start")
             .first()
         )
 
@@ -575,11 +579,11 @@ def get_exam_review(request):
             "subject": exam.subject.name if exam.subject else None,
             "total_marks": exam.total_marks,
             "session_id": session.id,
-            "start_time": session.start_time.isoformat()
-            if session.start_time
+            "start_time": session.base_start
+            if session.base_start
             else None,
-            "end_time": session.end_time.isoformat() if session.end_time else None,
-            "submitted_at": enrollment.updated_at.isoformat(),
+            "end_time": session.base_start + enrollment.individual_duration,
+            "submitted_at": enrollment.updated_at,
         }
 
         return Response(
@@ -615,7 +619,7 @@ def submit_active_exam(request):
         enrollment = (
             StudentExamEnrollment.objects.filter(candidate=candidate, status="active")
             .select_related("session__exam__program__institute")
-            .order_by("-session__end_time")
+            .order_by("-session__base_start")
             .first()
         )
 
@@ -632,7 +636,13 @@ def submit_active_exam(request):
             )
 
         enrollment.status = "submitted"
+        enrollment.present = False
+        enrollment.disconnected_at = timezone.now()
         enrollment.save()
+
+        from appCore.tasks import submit_student_exam
+
+        submit_student_exam.control.revoke(enrollment.id)
 
         return Response(
             {
