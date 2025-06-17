@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import defaultdict
 
@@ -24,6 +25,7 @@ from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def get_tokens_for_user(user):
@@ -34,14 +36,15 @@ def get_tokens_for_user(user):
     }
 
 
-
-
 def admin_register_view(request):
     if request.method == "POST":
         form = AdminRegisterForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, "Admin registered successfully. You can now log in.")
+            messages.success(
+                request,
+                "Admin registered successfully. You can now log in.",
+            )
             return redirect("admin:login")
     else:
         form = AdminRegisterForm()
@@ -55,7 +58,6 @@ def custom_admin_login_view(request):
         login(request, user)
         return redirect("admin:index")
     return render(request, "custom_admin/login.html", {"form": form})
-
 
 
 # ------------------------- Candidate Registration -------------------------
@@ -165,12 +167,11 @@ def randomize_questions_and_answers_for_enrollment(enrollment):
     enrollment.answer_order = answer_order
 
 
-def build_candidate_login_payload(candidate, access_token,enrollment):
+def build_candidate_login_payload(candidate, access_token, enrollment):
     """
     Build the response payload for successful candidate login.
     """
     try:
-
         exam = enrollment.session.exam
         session = enrollment.session
 
@@ -184,15 +185,11 @@ def build_candidate_login_payload(candidate, access_token,enrollment):
         )
 
         start_time = (
-            session.start_time.strftime("%H:%M:%S")
-            if session and session.start_time
+            session.base_start.strftime("%H:%M:%S")
+            if session and session.base_start
             else None
         )
-        duration = (
-            int((session.end_time - session.start_time).total_seconds() // 60)
-            if session and session.end_time
-            else None
-        )
+        duration = session.base_duration if session and session.base_duration else None
 
     except StudentExamEnrollment.DoesNotExist:
         shift_id = shift_plan_id = shift_plan_program_id = seat_number = start_time = (
@@ -217,7 +214,7 @@ def build_candidate_login_payload(candidate, access_token,enrollment):
         "biometric_image": get_image_url("candidate.biometric_image"),
         "right_thumb_image": get_image_url("candidate.right_thumb_image"),
         "left_thumb_image": get_image_url("candidate.left_thumb_image"),
-        "seat_number": seat_number,
+        # "seat_number": seat_number,``
         "start_time": start_time,
         "duration": duration,
         "access_token": access_token,

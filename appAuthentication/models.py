@@ -4,7 +4,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from appAuthentication.utils.upload_to_institute import image_upload_to_institute
+from appAuthentication.utils.upload_to_institute import fingerprint_upload_to_institute, image_upload_to_institute
 from appInstitutions.models import Institute
 
 
@@ -91,6 +91,17 @@ class Candidate(models.Model):
         blank=True,
         null=True,
     )
+    fingerprint_left = models.ImageField(
+        upload_to=fingerprint_upload_to_institute,
+        blank=True,
+        null=True,
+    )
+    fingerprint_right = models.ImageField(
+        upload_to=fingerprint_upload_to_institute,
+        blank=True,
+        null=True,
+    )
+
     institute = models.ForeignKey(
         Institute,
         on_delete=models.CASCADE,

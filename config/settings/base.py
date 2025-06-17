@@ -218,7 +218,7 @@ FIXTURE_DIRS = (str(APPS_DIR / "fixtures"),)
 # https://docs.djangoproject.com/en/dev/ref/settings/#session-cookie-httponly
 SESSION_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-httponly
-CSRF_COOKIE_HTTPONLY = False # so that JavaScript can access CSRF token
+CSRF_COOKIE_HTTPONLY = False  # so that JavaScript can access CSRF token
 
 
 # https://docs.djangoproject.com/en/dev/ref/settings/#x-frame-options
@@ -365,6 +365,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost",
     "http://69.62.85.89",
+    "https://localhost:8003",
 ]
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
@@ -375,7 +376,6 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
-
     # Sesession authentication for the docs views
     "SERVE_AUTHENTICATION": ["rest_framework.authentication.SessionAuthentication"],
 }
