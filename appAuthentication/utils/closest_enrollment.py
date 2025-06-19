@@ -1,7 +1,7 @@
 # utils.py
 from django.utils import timezone
 
-from appAuthentication.models import StudentExamEnrollment
+from appExam.models import StudentExamEnrollment
 
 
 def get_closest_enrollment(candidate):
@@ -25,10 +25,10 @@ def get_closest_enrollment(candidate):
     # 1) Ongoing
     ongoing = (
         qs.filter(
-            session__start_time__lte=now,
-            session__end_time__gt=now,  # or session__status="ongoing"
+            session__base_start__lte=now,
+            session__status__in=["ongoing", "paused"],
         )
-        .order_by("session__start_time")
+        .order_by("session__base_start")
         .first()
     )
     if ongoing:
@@ -36,12 +36,12 @@ def get_closest_enrollment(candidate):
 
     # 2) Upcoming
     upcoming = (
-        qs.filter(session__start_time__gte=now).order_by("session__start_time").first()
+        qs.filter(session__base_start__gte=now).order_by("session__base_start").first()
     )
     if upcoming:
         return upcoming
 
     # 3) Most recent past
     return (
-        qs.filter(session__start_time__lt=now).order_by("-session__start_time").first()
+        qs.filter(session__base_start__lt=now).order_by("-session__base_start").first()
     )

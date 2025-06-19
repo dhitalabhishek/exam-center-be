@@ -31,7 +31,7 @@
         {% for session in exam_sessions %}
           <tr class="{% cycle 'row1' 'row2' %}">
             <td style="padding: 10px;">{{ session.exam }}</td>
-            <td style="padding: 10px;">{{ session.start_time|date:'Y-m-d H:i' }}</td>
+            <td style="padding: 10px;">{{ session.base_start|date:'Y-m-d H:i' }}</td>
             <td style="padding: 10px;">{{ session.get_status_display }}</td>
             <td style="padding: 10px;">
               <a href="{% url 'admin:appExam_question_import_document' session.id %}" class="button">Select</a>

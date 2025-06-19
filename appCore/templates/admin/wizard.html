@@ -11,7 +11,7 @@
   <style>
     .wizard-container {
       padding: 20px;
-      margin:20px;
+      margin: 20px;
     }
     
     .wizard-header {
@@ -89,6 +89,12 @@
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       background: white;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .admin-frame.loaded {
+      opacity: 1;
     }
     
     .nav-btn {
@@ -165,7 +171,7 @@
 
     <!-- Embedded Admin Page -->
     <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-      <iframe src="{{ admin_url }}" class="admin-frame" id="admin-iframe" onload="adjustIframeHeight()"></iframe>
+      <iframe src="{{ admin_url }}" class="admin-frame" id="admin-iframe" onload="hideAdminElements()"></iframe>
     </div>
 
     <!-- Navigation Controls -->
@@ -195,6 +201,51 @@
   </div>
 
   <script>
+    function hideAdminElements() {
+      const iframe = document.getElementById('admin-iframe');
+      
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        
+        // Create style element to hide admin elements
+        const style = iframeDoc.createElement('style');
+        style.textContent = `
+          #header,
+          .breadcrumbs,
+          #nav-sidebar,
+          .sidebar,
+          #footer,
+          .paginator {
+            display: none !important;
+          }
+          
+          #content-main,
+          .content {
+            margin-left: 0 !important;
+            padding-left: 20px !important;
+          }
+          
+          #branding,
+          .branding {
+            display: none !important;
+          }
+        `;
+        
+        iframeDoc.head.appendChild(style);
+        
+        // Show iframe after hiding elements
+        setTimeout(() => {
+          iframe.classList.add('loaded');
+          adjustIframeHeight();
+        }, 100);
+        
+      } catch (e) {
+        // If we can't access iframe content (cross-origin), just show it
+        iframe.classList.add('loaded');
+        adjustIframeHeight();
+      }
+    }
+
     function adjustIframeHeight() {
       const iframe = document.getElementById('admin-iframe')
       try {
@@ -206,19 +257,18 @@
       }
     }
     
-    
-  document.addEventListener('keydown', function (e) {
-    {% if has_previous %}
-    if (e.key === 'ArrowLeft') {
-      window.location.href = "{% url 'exam_wizard_step' step=previous_step %}"
-    }
-    {% endif %}
-    {% if has_next %}
-    if (e.key === 'ArrowRight') {
-      window.location.href = "{% url 'exam_wizard_step' step=next_step %}"
-    }
-    {% endif %}
-  })
+    document.addEventListener('keydown', function (e) {
+      {% if has_previous %}
+      if (e.key === 'ArrowLeft') {
+        window.location.href = "{% url 'exam_wizard_step' step=previous_step %}"
+      }
+      {% endif %}
+      {% if has_next %}
+      if (e.key === 'ArrowRight') {
+        window.location.href = "{% url 'exam_wizard_step' step=next_step %}"
+      }
+      {% endif %}
+    })
     
     window.addEventListener('resize', adjustIframeHeight)
     setInterval(adjustIframeHeight, 2000)

@@ -6,6 +6,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Count
 from django.http import HttpResponseRedirect
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -24,6 +25,7 @@ from django.views.decorators.http import require_http_methods
 
 from appCore.tasks import pause_exam_session
 from appCore.tasks import resume_exam_session
+from appInstitutions.models import Program
 
 from .forms import DocumentUploadForm
 from .models import Answer
@@ -120,11 +122,27 @@ class HallAdmin(admin.ModelAdmin):
     list_per_page = 10
 
 
+import logging
+logger = logging.getLogger(__name__)
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ("id", "program", "subject", "total_marks")
     list_filter = ("program",)
     list_per_page = 10
+    logger.debug("testing logger")
+
+
+    def get_list_display(self, request):
+        has_any = Program.objects.annotate(
+            subject_count=Count("subjects")
+        ).filter(subject_count__gt=0).exists()
+
+        logger.debug("ExamAdmin.get_list_display 👉 has_any_subjects = %s", has_any)
+
+        cols = ["id", "program"]
+        if has_any:
+            cols.append("subject")
+        cols.append("total_marks")
+        return cols
 
 
 # Inline for enrollments within ExamSession detail
