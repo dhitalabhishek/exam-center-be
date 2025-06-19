@@ -1,5 +1,6 @@
 # ruff: noqa: E501
 import os
+import socket
 from datetime import timedelta
 
 from .base import *  # noqa: F403
@@ -18,7 +19,13 @@ SECRET_KEY = env(
     default="9Jbn0LuNdOqwe3efr2oBtsCnlASlz4Fi1N4wBge40SCRacGHPzVwgDXnb7VR20P9",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "django", "69.62.85.89","192.168.254.143"]  # noqa: S104
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "django",
+    socket.gethostname(),
+    socket.getfqdn(),
+]
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -63,10 +70,10 @@ DEBUG_TOOLBAR_CONFIG = {
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#internal-ips
 # INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
 # if env("USE_DOCKER") == "yes":
-    # import socket
+# import socket
 
-    # hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-    # INTERNAL_IPS += [".".join(ip.split(".")[:-1] + ["1"]) for ip in ips]
+# hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+# INTERNAL_IPS += [".".join(ip.split(".")[:-1] + ["1"]) for ip in ips]
 
 # django-extensions
 # ------------------------------------------------------------------------------
@@ -112,7 +119,7 @@ AWS_QUERYSTRING_AUTH = False  # Disable query parameter authentication
 AWS_DEFAULT_ACL = None  # Use bucket's default ACL
 
 
-# SIMPLE_JWT = {  # noqa: ERA001
+# SIMPLE_JWT = {
 #     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
 #     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 #     "ROTATE_REFRESH_TOKENS": False,
