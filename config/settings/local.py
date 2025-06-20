@@ -88,8 +88,8 @@ CELERY_TASK_EAGER_PROPAGATES = True
 # ------------------------------------------------------------------------------
 
 # Celery settings
-CELERY_BROKER_URL = "redis://10.10.0.101:6379/0"
-CELERY_RESULT_BACKEND = "redis://10.10.0.101:6379/0"
+CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_RESULT_BACKEND = "redis://redis:6379/0"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
