@@ -2,42 +2,40 @@
 # ------------------------------------------------------------------------------
 USE_DOCKER=yes
 IPYTHONDIR=/app/.ipython
-
-# Django
-# ------------------------------------------------------------------------------
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,10.10.0.101,django
-DJANGO_SECRET_KEY=l2Ehp279y2w5JTZP4ekCIMKnRxFJOd7YL2UMXnNtXOklgvBlhEixTOu6L2dfsjjzYqid0qYYGOgBrYFZGQRJ_A
-
 # Redis
 # ------------------------------------------------------------------------------
-REDIS_URL=redis://10.10.0.101:6379/0
+REDIS_URL=redis://redis:6379/0
 
-# Enable debugging
+
+# enable debugging
 # ------------------------------------------------------------------------------
 DEBUG=True
 
-# JWT Authentication
-# ------------------------------------------------------------------------------
+#fow hwt authencation
 JWT_SIGNING_KEY=5M)4aGB68v^rDd%VZ@M&pxxk#u1JazKdyhFg&ZxLr49E89B&29x6r#E$e9J!
+
+DJANGO_SECRET_KEY=l2Ehp279y2w5JTZP4ekCIMKnRxFJOd7YL2UMXnNtXOklgvBlhEixTOu6L2dfsjjzYqid0qYYGOgBrYFZGQRJ_A
 
 # Flower
 CELERY_FLOWER_USER=debug
 CELERY_FLOWER_PASSWORD=debug
 
-# Grafana - Updated for IP access
+
+# Grafana
 GF_SECURITY_ADMIN_USER=admin
 GF_SECURITY_ADMIN_PASSWORD=admin123
-GF_SERVER_ROOT_URL=http://10.10.0.101/monitor/
+GF_SERVER_ROOT_URL=http://localhost/monitor/
 GF_SERVER_SERVE_FROM_SUB_PATH=true
-GF_SERVER_DOMAIN=10.10.0.101
+GF_SERVER_DOMAIN=localhost
 GF_SERVER_HTTP_PORT=3000
+
 
 # Locust
 LOCUST_USER=debug
 LOCUST_PASSWORD=debug
 
-# MinIO - Updated for IP access
+# minio
 MINIO_ROOT_USER=admin
 MINIO_ROOT_PASSWORD=admin123
 AWS_STORAGE_BUCKET_NAME=exam
-AWS_S3_ENDPOINT_URL=http://10.10.0.101:9000
+AWS_S3_ENDPOINT_URL=http://minio:9000
