@@ -148,19 +148,19 @@ SIMPLE_JWT = {
 
 
 # ssl and https:
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = True  # Redirect HTTP to HTTPS (optional since nginx handles this)
-USE_TLS = True
+# SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# SECURE_SSL_REDIRECT = True  # Redirect HTTP to HTTPS (optional since nginx handles this)
+# USE_TLS = True
 
-# Session and CSRF cookies over HTTPS only
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# # Session and CSRF cookies over HTTPS only
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
 
-# Optional: HSTS settings
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# # Optional: HSTS settings
+# SECURE_HSTS_SECONDS = 31536000  # 1 year
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True
 
-# Content type options
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_BROWSER_XSS_FILTER = True
+# # Content type options
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# SECURE_BROWSER_XSS_FILTER = True
