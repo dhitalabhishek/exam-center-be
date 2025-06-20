@@ -128,7 +128,7 @@ logger = logging.getLogger(__name__)
 class ExamAdmin(admin.ModelAdmin):
     list_filter = ("program",)
     list_per_page = 10
-    logger.debug("testing logger")
+    logger.debug("testing logger👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉")
 
 
     def get_list_display(self, request):

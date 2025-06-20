@@ -550,6 +550,100 @@
       margin-bottom: 20px;
       border: 1px solid #c3e6cb;
     }
+    
+    /* New status indicators for capture flow */
+    .status-flow {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+      gap: 30px;
+    }
+    
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .status-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .status-pending {
+      background: #e0e0e0;
+      color: #999;
+    }
+    
+    .status-active {
+      background: #3498db;
+      color: white;
+      animation: pulse 1.5s infinite;
+    }
+    
+    .status-completed {
+      background: #2ecc71;
+      color: white;
+    }
+
+    .manual-verification-section {
+      padding: 25px;
+      background: #fff8e1;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      margin-top: 20px;
+      border-left: 4px solid #ffc107;
+    }
+    
+    .manual-verification-btn {
+      background: #ffc107;
+      color: #333;
+    }
+    
+    .manual-verification-btn:hover {
+      background: #ffb300;
+    }
+    
+    .reason-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      min-height: 100px;
+    }
+    
+    .manual-verification-dialog {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      z-index: 1000;
+      width: 500px;
+      max-width: 90%;
+    }
+    
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+    }
   </style>
 {% endblock %}
 
@@ -589,9 +683,16 @@
                   {% endif %}
                 </div>
                 <div class="candidate-info">
-                  <div class="candidate-name">{{ candidate.first_name }} {{ candidate.last_name }}</div>
+                <div class="candidate-status">
+                    {{ candidate.verification_status }}
+                    {% if candidate.verification_status == 'verified' %}
+                        <i class="fa fa-check-circle" aria-hidden="true" style="color: green;"></i>
+                    {% endif %}
+                    </div>
+                <div class="candidate-name">{{ candidate.first_name }} {{ candidate.last_name }}</div>
                   <div class="candidate-symbol">Symbol: {{ candidate.symbol_number }}</div>
                   <div class="candidate-symbol">{{ candidate.email }}</div>
+                  
                 </div>
               </div>
             </div>
@@ -615,6 +716,23 @@
 
       <div id="capture-content" style="display: none;">
         <div id="selected-candidate-info" class="selected-candidate-info"></div>
+        
+
+        <!-- Status flow indicators -->
+        <div class="status-flow">
+          <div class="status-item">
+            <div class="status-icon status-pending" id="photo-status">1</div>
+            <div>Photo</div>
+          </div>
+          <div class="status-item">
+            <div class="status-icon status-pending" id="left-fp-status">2</div>
+            <div>Left Finger</div>
+          </div>
+          <div class="status-item">
+            <div class="status-icon status-pending" id="right-fp-status">3</div>
+            <div>Right Finger</div>
+          </div>
+        </div>
 
         <div class="capture-container">
           <!-- Photo capture section -->
@@ -636,7 +754,7 @@
             </div>
 
             <div class="status-indicator">
-              <div class="status-dot" id="camera-status"></div>
+              <div class="status-dot" id="camera-status-dot"></div>
               <span id="camera-status-text">Select a candidate to activate camera</span>
             </div>
 
@@ -671,8 +789,7 @@
                 <div class="progress-container">
                   <div class="progress-bar" id="left-progress" style="width: 0%"></div>
                 </div>
-                <div class="quality-indicator" id="left-quality">Ready to capture</div>
-                <button class="btn btn-sm btn-primary mt-2" onclick="fpCapture('left')" disabled id="capture-left-btn">Capture Left</button>
+                <div class="quality-indicator" id="left-quality">Waiting for photo capture</div>
               </div>
 
               <div class="finger-block">
@@ -693,8 +810,7 @@
                 <div class="progress-container">
                   <div class="progress-bar" id="right-progress" style="width: 0%"></div>
                 </div>
-                <div class="quality-indicator" id="right-quality">Ready to capture</div>
-                <button class="btn btn-sm btn-primary mt-2" onclick="fpCapture('right')" disabled id="capture-right-btn">Capture Right</button>
+                <div class="quality-indicator" id="right-quality">Waiting for left fingerprint</div>
               </div>
             </div>
 
@@ -702,13 +818,7 @@
               <div class="status-dot" id="fp-status"></div>
               <span id="fp-status-text">Select a candidate to begin fingerprint capture</span>
             </div>
-
-            <input type="text" id="fpscore" class="form-control mt-2" placeholder="Quality / NFIQ" readonly style="display: none;" />
           </div>
-        </div>
-
-        <div class="save-section">
-          <button class="capture-btn btn-success save-btn" onclick="saveAllData()" disabled id="save-all-btn"><i class="fas fa-save"></i> Save All Data</button>
         </div>
       </div>
 
@@ -717,8 +827,49 @@
         <h3>No Candidate Selected</h3>
         <p>Please search and select a candidate from the sidebar to begin biometric capture</p>
       </div>
+
+
+  <!-- Manual Verification Section -->
+        <div class="manual-verification-section">
+          <div class="section-title-main">
+            <i class="fas fa-hands-helping"></i> Manual Verification
+          </div>
+          <p>Use this option if the candidate cannot provide biometrics due to physical limitations.</p>
+          
+          <button class="capture-btn manual-verification-btn" onclick="showManualVerificationDialog()">
+            <i class="fas fa-check-circle"></i> Verify Manually
+          </button>
+        </div>
+      </div>
     </div>
   </div>
+  
+  <!-- Manual Verification Dialog -->
+  <div class="overlay" id="manual-verification-overlay"></div>
+  <div class="manual-verification-dialog" id="manual-verification-dialog">
+    <h4><i class="fas fa-hands-helping"></i> Manual Verification</h4>
+    <p>Please provide a reason for manual verification:</p>
+    
+    <textarea 
+      class="reason-input" 
+      id="manual-verification-reason" 
+      placeholder="Reason for manual verification (e.g., physical disability, missing fingers, etc.)"></textarea>
+    
+    <div class="capture-controls">
+      <button class="capture-btn btn-outline" onclick="closeManualVerificationDialog()">
+        <i class="fas fa-times"></i> Cancel
+      </button>
+      <button class="capture-btn manual-verification-btn" onclick="submitManualVerification()">
+        <i class="fas fa-check"></i> Confirm Verification
+      </button>
+    </div>
+  </div>
+  
+
+    </div>
+  </div>
+
+
 
   <form id="fpForm" method="post" class="d-none">
     {% csrf_token %}
@@ -739,6 +890,11 @@
 let selectedCandidateId = null;
 let cameraStream = null;
 let currentCandidate = null;
+let captureState = {
+  photo: false,
+  leftFinger: false,
+  rightFinger: false
+};
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -769,6 +925,38 @@ function showNotification(message, type = "success") {
     }, 3000);
 }
 
+// Update status indicators
+function updateStatusUI() {
+  // Photo status
+  if (captureState.photo) {
+    document.getElementById('photo-status').className = 'status-icon status-completed';
+    document.getElementById('camera-status-text').textContent = 'Photo captured';
+  } else {
+    document.getElementById('photo-status').className = 'status-icon status-pending';
+  }
+  
+  // Left fingerprint status
+  if (captureState.leftFinger) {
+    document.getElementById('left-fp-status').className = 'status-icon status-completed';
+    document.getElementById('left-quality').textContent = 'Left fingerprint captured';
+  } else {
+    document.getElementById('left-fp-status').className = 'status-icon status-pending';
+    document.getElementById('left-quality').textContent = captureState.photo 
+      ? 'Ready to capture' 
+      : 'Waiting for photo capture';
+  }
+  
+  // Right fingerprint status
+  if (captureState.rightFinger) {
+    document.getElementById('right-fp-status').className = 'status-icon status-completed';
+    document.getElementById('right-quality').textContent = 'Right fingerprint captured';
+  } else {
+    document.getElementById('right-fp-status').className = 'status-icon status-pending';
+    document.getElementById('right-quality').textContent = captureState.leftFinger 
+      ? 'Ready to capture' 
+      : 'Waiting for left fingerprint';
+  }
+}
 
 // Candidate selection logic
 function selectCandidate(candidateId) {
@@ -808,31 +996,117 @@ function selectCandidate(candidateId) {
         </div>
     `;
     
+    // Fetch candidate details via AJAX
+    fetch(`/biometric/candidate-details/?candidate_id=${candidateId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            const candidateName = `${data.first_name} ${data.last_name}`;
+            const candidateSymbol = data.symbol_number;
+            const email = data.email;
+            const institute = data.institute;
+            const level = data.level;
+            const program = data.program;
+            
+            // Generate status icons
+            const verificationIcon = data.verification_status === 'verified' 
+                ? '<i class="fas fa-check-circle text-success"></i>' 
+                : '<i class="fas fa-exclamation-triangle text-warning"></i>';
+                
+            const examIcon = data.exam_status === 'present' 
+                ? '<i class="fas fa-user-check text-success"></i>' 
+                : data.exam_status === 'completed' 
+                    ? '<i class="fas fa-clipboard-check text-info"></i>' 
+                    : '<i class="fas fa-user-slash text-secondary"></i>';
+            
+            // Status text classes
+            const verificationClass = data.verification_status === 'verified' 
+                ? 'text-success' 
+                : 'text-warning';
+                
+            const examClass = data.exam_status === 'present' 
+                ? 'text-success' 
+                : data.exam_status === 'completed' 
+                    ? 'text-info' 
+                    : 'text-secondary';
+            
+            // Update candidate info with status indicators
+            document.getElementById('selected-candidate-info').innerHTML = `
+                <div class="d-flex align-items-center gap-3">
+                    <div class="candidate-avatar">
+                        ${candidateName.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">${candidateName}</h5>
+                                <p class="mb-0 text-muted">${candidateSymbol}</p>
+                            </div>
+                            <div class="status-icons">
+                                ${verificationIcon} ${examIcon}
+                            </div>
+                             
+                        </div>
+                        <div class="status-icons">
+                                institute: ${institute}
+                            </div>
+                             <div class="status-icons">
+                                email:${email}
+                            </div>
+                             <div class="status-icons">
+                                level:${level}
+                            </div>
+                             <div class="status-icons">
+                                program:${program}
+                            </div>
+
+                        
+                        <div class="status-details mt-2">
+                            <div class="d-flex gap-3">
+                                <div class="verification-status ${verificationClass}">
+                                    <strong>Verification:</strong> ${data.verification_status}
+                                </div>
+                                <div class="exam-status ${examClass}">
+                                    <strong>Exam Status:</strong> ${data.exam_status}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            document.getElementById('selected-candidate-info').innerHTML = `
+                <div class="alert alert-danger">
+                    Error loading candidate details: ${error.message}
+                </div>
+            `;
+        });
+
     // Set form values
     document.getElementById('fp_candidate_id').value = candidateId;
     document.getElementById('photo_candidate_id').value = candidateId;
     
+    // Reset capture state
+    captureState = {
+      photo: false,
+      leftFinger: false,
+      rightFinger: false
+    };
+    updateStatusUI();
+    
     // Enable capture buttons
-    enableCaptureInterface();
-    
-    // Start camera
-    startCamera();
-}
-
-function enableCaptureInterface() {
-    // Enable photo capture
     document.getElementById('capture-photo-btn').disabled = false;
-    document.getElementById('camera-status').classList.add('active');
+    document.getElementById('camera-status-dot').classList.add('active');
     document.getElementById('camera-status-text').textContent = 'Camera ready';
-    
-    // Enable fingerprint capture
-    document.getElementById('capture-left-btn').disabled = false;
-    document.getElementById('capture-right-btn').disabled = false;
     document.getElementById('fp-status').classList.add('active');
     document.getElementById('fp-status-text').textContent = 'Ready to capture fingerprints';
     
-    // Enable save button
-    document.getElementById('save-all-btn').disabled = false;
+    // Start camera
+    startCamera();
 }
 
 // Camera functions
@@ -847,47 +1121,102 @@ function startCamera() {
         .catch(err => {
             console.error('Camera error:', err);
             document.getElementById('camera-status-text').textContent = 'Unable to access camera';
-            document.getElementById('camera-status').classList.remove('active');
+            document.getElementById('camera-status-dot').classList.remove('active');
         });
 }
 
 function capturePhoto() {
+
+
+  // temp
+    captureState.photo = true;
+    updateStatusUI();
+    
+    
+    
     if (!video.srcObject) {
         alert('Camera not available');
         return;
     }
     
+    // Update UI
+    document.getElementById('camera-status-text').textContent = 'Processing...';
+    
+    // Capture image
     const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    imageDataInput.value = canvas.toDataURL('image/png');
+    const imageData = canvas.toDataURL('image/jpeg');
     
     // Show captured image
     video.style.display = 'none';
     canvas.style.display = 'block';
     
-    // Submit form
-    document.getElementById('photoForm').submit();
-    alert("hello")
+    // Show retake button
+    document.getElementById('retake-btn').style.display = 'inline-flex';
+    document.getElementById('capture-photo-btn').style.display = 'none';
+    
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', getCSRFToken());
+    formData.append('action', 'capture');
+    formData.append('candidate_id', selectedCandidateId);
+    formData.append('image_data', imageData);
+
+    // Submit via AJAX
+    fetch("", {
+        method: "POST",
+        body: formData,
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification("Photo captured successfully");
+            captureState.photo = true;
+            updateStatusUI();
+            
+            // Stop camera stream
+            cameraStream.getTracks().forEach(track => track.stop());
+            
+            // Automatically capture left fingerprint after 1 second
+            setTimeout(() => {
+                captureFingerprint('left');
+            }, 1000);
+        } else {
+            showNotification("Photo capture failed: " + data.error, "error");
+            resetPhoto();
+        }
+    })
+    .catch(error => {
+        showNotification("Photo capture failed: " + error.message, "error");
+        resetPhoto();
+    });
 }
 
 function resetPhoto() {
+    // Reset UI
     canvas.style.display = 'none';
-    video.style.display = 'block';
-    imageDataInput.value = '';
+    document.getElementById('retake-btn').style.display = 'none';
+    document.getElementById('capture-photo-btn').style.display = 'inline-flex';
+    document.getElementById('camera-status-text').textContent = 'Camera ready';
+    
+    // Restart camera
+    startCamera();
 }
 
 // Fingerprint capture logic
-function fpCapture(hand) {
+function captureFingerprint(hand) {
     if (!selectedCandidateId) {
         alert('Please select a candidate first');
         return;
     }
     
+    // Update UI
     const preview = document.getElementById(`fp-${hand}-preview`);
     const progressBar = document.getElementById(`${hand}-progress`);
     const qualityIndicator = document.getElementById(`${hand}-quality`);
     
-    // Show scanning animation
     preview.classList.add('active');
     qualityIndicator.textContent = 'Scanning...';
     
@@ -896,7 +1225,8 @@ function fpCapture(hand) {
         if (!res.httpStaus || res.data.ErrorCode !== "0") {
             preview.classList.remove('active');
             qualityIndicator.textContent = 'Capture failed';
-            return alert("Capture error: " + (res.err || res.data.ErrorDescription));
+            showNotification("Capture error: " + (res.err || res.data.ErrorDescription), "error");
+            return;
         }
 
         const bmp = "data:image/bmp;base64," + res.data.BitmapData;
@@ -916,28 +1246,51 @@ function fpCapture(hand) {
         preview.querySelector('.fingerprint-placeholder').style.display = 'none';
         preview.classList.remove('active');
         
-        // Set form data
-        document.getElementById('bitmap_data').value = bmp;
-        document.getElementById('fp_hand').value = hand;
-        document.getElementById('fpscore').value = `Q: ${quality} NFIQ: ${nfiq}`;
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', getCSRFToken());
+        formData.append('action', 'biometric');
+        formData.append('candidate_id', selectedCandidateId);
+        formData.append('bitmap_data', bmp);
+        formData.append('hand', hand);
 
-        // Submit form
-        document.getElementById('fpForm').submit();
+        // Submit via AJAX
+        fetch("", {
+            method: "POST",
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(`${hand} fingerprint captured successfully`);
+                
+                // Update state
+                if (hand === 'left') {
+                    captureState.leftFinger = true;
+                    updateStatusUI();
+                    
+                    // Automatically capture right fingerprint after 1 second
+                    setTimeout(() => {
+                        captureFingerprint('right');
+                    }, 1000);
+                } else {
+                    captureState.rightFinger = true;
+                    updateStatusUI();
+                    showNotification("All biometric data captured!", "success");
+                }
+            } else {
+                showNotification("Fingerprint save failed: " + data.error, "error");
+            }
+        })
+        .catch(error => {
+            showNotification("Fingerprint save failed: " + error.message, "error");
+        });
         
     } catch (error) {
         preview.classList.remove('active');
         qualityIndicator.textContent = 'Sensor error';
-        alert('Fingerprint sensor error: ' + error.message);
+        showNotification('Fingerprint sensor error: ' + error.message, "error");
     }
-}
-
-function saveAllData() {
-    if (!selectedCandidateId) {
-        alert('Please select a candidate first');
-        return;
-    }
-    
-    alert('All biometric data saved successfully!');
 }
 
 // Cleanup camera stream
@@ -946,6 +1299,11 @@ window.addEventListener('beforeunload', function () {
         cameraStream.getTracks().forEach(track => track.stop());
     }
 });
+
+// Helper function to get CSRF token
+function getCSRFToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
 
 // Initialize interface
 document.addEventListener('DOMContentLoaded', function() {
@@ -959,64 +1317,66 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
 });
 
+
+function showManualVerificationDialog() {
+      document.getElementById('manual-verification-overlay').style.display = 'block';
+      document.getElementById('manual-verification-dialog').style.display = 'block';
+    }
+    
+    function closeManualVerificationDialog() {
+      document.getElementById('manual-verification-overlay').style.display = 'none';
+      document.getElementById('manual-verification-dialog').style.display = 'none';
+      document.getElementById('manual-verification-reason').value = '';
+    }
+    
+    function submitManualVerification() {
+      const reason = document.getElementById('manual-verification-reason').value;
+      
+      if (!reason) {
+        alert('Please provide a reason for manual verification');
+        return;
+      }
+      
+      // Submit via AJAX
+      const formData = new FormData();
+      formData.append('csrfmiddlewaretoken', getCSRFToken());
+      formData.append('action', 'manual_verification');
+      formData.append('candidate_id', selectedCandidateId);
+      formData.append('reason', reason);
+      
+      fetch("", {
+        method: "POST",
+        body: formData,
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showNotification("Candidate manually verified");
+          closeManualVerificationDialog();
+          
+          // Update UI to show verified status
+          document.querySelectorAll('.status-icon').forEach(icon => {
+            icon.className = 'status-icon status-completed';
+          });
+          document.getElementById('left-quality').textContent = 'Manually verified';
+          document.getElementById('right-quality').textContent = 'Manually verified';
+          document.getElementById('camera-status-text').textContent = 'Manually verified';
+          
+          // Disable capture buttons
+          document.getElementById('capture-photo-btn').disabled = true;
+          document.getElementById('retake-btn').style.display = 'none';
+        } else {
+          showNotification("Manual verification failed: " + data.error, "error");
+        }
+      })
+      .catch(error => {
+        showNotification("Manual verification failed: " + error.message, "error");
+      });
+    }
+
 // Search form submission
 document.getElementById('searchForm').addEventListener('submit', function(e) {
     // Allow normal form submission
-});
-
-
-// Handle photo form submit
-document.getElementById('photoForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    const formData = new FormData(this);
-    formData.append("action", "capture");
-
-    fetch("", {
-        method: "POST",
-        body: formData,
-        headers: {
-            "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
-        },
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            showNotification("Photo captured successfully");
-        } else {
-            showNotification("Photo capture failed: " + data.error, "error");
-        }
-    })
-    .catch(err => {
-        showNotification("Photo capture failed: " + err.message, "error");
-    });
-});
-
-// Handle fingerprint form submit
-document.getElementById('fpForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    const formData = new FormData(this);
-    formData.append("action", "biometric");
-
-    fetch("", {
-        method: "POST",
-        body: formData,
-        headers: {
-            "X-CSRFToken": formData.get("csrfmiddlewaretoken"),
-        },
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            showNotification(`Fingerprint (${data.hand}) saved successfully`);
-        } else {
-            showNotification("Fingerprint save failed: " + data.error, "error");
-        }
-    })
-    .catch(err => {
-        showNotification("Fingerprint save failed: " + err.message, "error");
-    });
 });
 </script>
 {% endblock %}
