@@ -16,30 +16,7 @@ from appExam.models import Question
 from appExam.models import StudentAnswer
 from appExam.models import StudentExamEnrollment
 
-
-# Helper function to get candidate's active enrollment (DRY principle)
-def get_candidate_active_enrollment(user, require_ongoing=True):  # noqa: FBT002
-    """Get candidate's active enrollment with optimized queries"""
-    try:
-        candidate = Candidate.objects.select_related("user").get(user=user)
-
-        # Single optimized query with all necessary joins
-        query = StudentExamEnrollment.objects.select_related(
-            "session__exam__program__institute",
-            "session__exam__subject",
-            "hall_assignment__hall",
-            "candidate__user",
-        ).filter(candidate=candidate)
-
-        if require_ongoing:
-            query = query.filter(session__status="ongoing")
-
-        enrollment = query.order_by("session__base_start").first()
-
-        return candidate, enrollment  # noqa: TRY300
-
-    except Candidate.DoesNotExist:
-        return None, None
+from .utils.active_enrollment import get_candidate_active_enrollment
 
 
 # ------------------------- Get Exam Session Details -------------------------

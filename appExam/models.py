@@ -248,6 +248,7 @@ class StudentExamEnrollment(models.Model):
     individual_duration = models.DurationField(default=timedelta(minutes=60))
     connection_start = models.DateTimeField(null=True, blank=True)
     disconnected_at = models.DateTimeField(null=True, blank=True)
+    total_paused_duration = models.DurationField(default=timedelta())
 
     # Connection status
     present = models.BooleanField(default=False)
@@ -265,21 +266,21 @@ class StudentExamEnrollment(models.Model):
 
     @property
     def effective_time_remaining(self):
-        # Timer hasn't started yet
         if not self.session_started_at or self.status != "active":
             return timedelta(0)
 
-        # Calculate base elapsed time since session started
         base_elapsed = timezone.now() - self.session_started_at
 
-        # Adjust for individual disconnections
+        # Add live paused time if disconnected now
         if self.disconnected_at and not self.present:
-            disconnected_duration = timezone.now() - self.disconnected_at
-            base_elapsed -= disconnected_duration
+            live_paused = timezone.now() - self.disconnected_at
+        else:
+            live_paused = timedelta(0)
 
-        # Calculate remaining time
-        remaining = self.individual_duration - base_elapsed
-        return max(remaining, timedelta(0))  # Prevent negative values
+        adjusted_elapsed = base_elapsed - self.paused_duration - live_paused
+
+        remaining = self.individual_duration - adjusted_elapsed
+        return max(remaining, timedelta(0))
 
     @property
     def should_submit(self):
@@ -299,7 +300,9 @@ class StudentExamEnrollment(models.Model):
             self.status = "active"
         elif self.disconnected_at:
             # Resume timing from pause
-            self.connection_start += timezone.now() - self.disconnected_at
+            pause_duration = timezone.now() - self.disconnected_at
+            self.paused_duration += pause_duration
+            self.connection_start += pause_duration
 
         self.disconnected_at = None
         self.save()

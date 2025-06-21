@@ -23,6 +23,7 @@ from .forms import DualPasswordAdminLoginForm
 from .models import Candidate
 from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
+from .utils.closest_enrollment import get_closest_enrollment
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -106,15 +107,8 @@ def candidate_login_view(request):
         )
 
     # Check if candidate has enrollment - if not, they can't login
-    try:
-        enrollment = StudentExamEnrollment.objects.select_related(
-            "session",
-            "session__exam",
-            "session__exam__program",
-            "hall_assignment",
-            "hall_assignment__hall",
-        ).get(candidate=candidate)
-    except StudentExamEnrollment.DoesNotExist:
+    enrollment = get_closest_enrollment(candidate)
+    if not enrollment:
         return Response(
             {"error": "You are not enrolled in any exam session."},
             status=status.HTTP_403_FORBIDDEN,

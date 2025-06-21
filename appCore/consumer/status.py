@@ -105,13 +105,17 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
                 logger.error(f"Failed to revoke submit task: {e}")
         return True
 
-    async def send_status(self,data=None):
+    async def send_status(self, data=None):
         data = await self._gather_status()
         event = await self._pop_redis_event(self.enrollment.id)
         if event:
             data["event"] = event
         await self.send_json(
-            {"type": "status", "data": data, "timestamp": timezone.now().isoformat()},
+            {
+                "type": "status",
+                "data": data,
+                "timestamp": timezone.localtime(timezone.now()).isoformat(),
+            },
         )
 
     @sync_to_async
@@ -124,9 +128,11 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
             "present": enroll.present,
             "session_status": sess.status,
             "time_remaining": max(0, enroll.effective_time_remaining.total_seconds()),
-            "session_effective_end": sess.expected_end.isoformat()
-            if sess.expected_end
-            else None,
+            "session_effective_end": (
+                timezone.localtime(sess.expected_end).isoformat()
+                if sess.expected_end
+                else None
+            ),
         }
 
     @sync_to_async

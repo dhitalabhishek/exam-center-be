@@ -396,7 +396,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
 MIDDLEWARE = [*MIDDLEWARE, "django_prometheus.middleware.PrometheusAfterMiddleware"]
 
-
 JAZZMIN_UI_TWEAKS = {
     "theme": "simplex",
 }

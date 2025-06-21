@@ -4,7 +4,7 @@ from typing import Any
 import docx
 
 
-def parse_questions_from_document(content: str) -> list[dict[str, Any]]:
+def parse_questions_from_document(content: str) -> list[dict[str, Any]]:  # noqa: C901, PLR0912
     """
     Parse questions and answers from document content.
     Expected format:
@@ -22,7 +22,7 @@ def parse_questions_from_document(content: str) -> list[dict[str, Any]]:
     C) Follow the laboratory's spill response protocol and use appropriate PPE
     D) Open all windows to ventilate the area
     Ans. Follow the laboratory's spill response protocol and use appropriate PPE
-    """
+    """  # noqa: E501
     questions = []
 
     # Split content by question patterns - now looking for "Question N)"

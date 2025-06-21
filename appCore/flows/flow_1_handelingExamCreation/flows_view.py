@@ -3,6 +3,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.generic import TemplateView
+from django.contrib import admin
 
 
 @method_decorator(staff_member_required, name="dispatch")
@@ -42,6 +43,7 @@ class AdminWizardView(TemplateView):
         admin_url = f"/admin/{app_label}/{model_name.lower()}/"
 
         context.update({
+            **admin.site.each_context(self.request),
             "current_step": current_step,
             "total_steps": len(self.WIZARD_FLOW),
             "step_title": title,
