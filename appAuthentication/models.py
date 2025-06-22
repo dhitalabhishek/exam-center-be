@@ -4,7 +4,8 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from appAuthentication.utils.upload_to_institute import fingerprint_upload_to_institute, image_upload_to_institute
+from appAuthentication.utils.upload_to_institute import fingerprint_upload_to_institute
+from appAuthentication.utils.upload_to_institute import image_upload_to_institute
 from appInstitutions.models import Institute
 
 
@@ -51,12 +52,16 @@ class Candidate(models.Model):
     class ExamStatus(models.TextChoices):
         ABSENT = "absent", _("Absent")
         PRESENT = "present", _("Present")
-        COMPLETED = "completed", _("Completed")
 
     verification_status = models.CharField(
         max_length=10,
         choices=VerificationStatus.choices,
         default=VerificationStatus.PENDING,
+    )
+    verification_notes = models.CharField(
+        max_length=100,
+        blank="",
+        default="",
     )
     exam_status = models.CharField(
         max_length=10,
@@ -86,6 +91,13 @@ class Candidate(models.Model):
     program_id = models.IntegerField()
     program = models.CharField(max_length=100)
     generated_password = models.CharField(max_length=128)
+    initial_image = models.ImageField(
+        upload_to=image_upload_to_institute,
+        blank=True,
+        null=True,
+    )
+
+    # this is image to be verified
     profile_image = models.ImageField(
         upload_to=image_upload_to_institute,
         blank=True,

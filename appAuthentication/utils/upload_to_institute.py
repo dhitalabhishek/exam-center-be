@@ -38,6 +38,6 @@ def fingerprint_upload_to_institute(instance, filename):
     # you can also incorporate symbol_number or timestamp if you like
     path = Path(filename)
     ext = path.suffix
-    new_filename = f"fingerprints/{instance.symbol_number}{ext}"
+    new_filename = f"fingerprints/{instance.symbol_number}/{instance.symbol_number}.{ext}"
 
     return str(Path(inst_slug) / new_filename)

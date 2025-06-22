@@ -37,7 +37,6 @@ urlpatterns = [
         get_candidate_details,
         name="get_candidate_details",
     ),
-    # biometric VIEW for webcam capture
     path(
         "biometric/verification/",
         admin.site.admin_view(webcam_capture_view),
