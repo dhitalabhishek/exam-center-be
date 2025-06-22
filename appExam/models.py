@@ -248,7 +248,7 @@ class StudentExamEnrollment(models.Model):
     individual_duration = models.DurationField(default=timedelta(minutes=60))
     connection_start = models.DateTimeField(null=True, blank=True)
     disconnected_at = models.DateTimeField(null=True, blank=True)
-    total_paused_duration = models.DurationField(default=timedelta())
+    paused_duration = models.DurationField(default=timedelta())
 
     # Connection status
     present = models.BooleanField(default=False)
