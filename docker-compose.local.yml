@@ -15,6 +15,7 @@ services:
       dockerfile: ./compose/local/django/Dockerfile
     image: backend_local_django
     container_name: backend_local_django
+    network_mode: "host" # Added for host networking
     depends_on:
       - postgres
       - redis
@@ -25,8 +26,8 @@ services:
     env_file:
       - ./.envs/.local/.django
       - ./.envs/.local/.postgres
-    ports:
-      - '8000:8000'
+    environment:
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,10.10.0.101,django
     command: /start
 
   nginx:
@@ -35,6 +36,7 @@ services:
       dockerfile: ./compose/local/nginx/Dockerfile
     image: backend_local_nginx
     container_name: backend_local_nginx
+    network_mode: "host" # Added for host networking
     depends_on:
       - django
     volumes:
@@ -43,8 +45,6 @@ services:
       - media_volume:/app/backend/media:ro
       - ./compose/local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx_logs:/var/log/nginx
-    ports:
-      - "80:80"
 
   postgres:
     build:
@@ -52,6 +52,7 @@ services:
       dockerfile: ./compose/production/postgres/Dockerfile
     image: backend_production_postgres
     container_name: backend_local_postgres
+    network_mode: "host" # Added for host networking
     volumes:
       - backend_local_postgres_data:/var/lib/postgresql/data
       - backend_local_postgres_data_backups:/backups
@@ -61,6 +62,7 @@ services:
   redis:
     image: docker.io/redis:6
     container_name: backend_local_redis
+    network_mode: "host" # Added for host networking
     volumes:
       - backend_local_redis_data:/data
 
@@ -68,6 +70,7 @@ services:
     <<: *django
     image: backend_local_celeryworker
     container_name: backend_local_celeryworker
+    network_mode: "host" # Added for host networking
     depends_on:
       - redis
       - postgres
@@ -78,6 +81,7 @@ services:
     <<: *django
     image: backend_local_celerybeat
     container_name: backend_local_celerybeat
+    network_mode: "host" # Added for host networking
     depends_on:
       - redis
       - postgres
@@ -88,16 +92,13 @@ services:
     <<: *django
     image: backend_local_flower
     container_name: backend_local_flower
-    ports:
-      - '5555:5555'
+    network_mode: "host" # Added for host networking
     command: /start-flower
 
   minio:
     image: minio/minio:latest
     container_name: backend_local_minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    network_mode: "host" # Added for host networking
     volumes:
       - backend_local_minio_data:/data
     env_file:
@@ -107,16 +108,14 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: backend_local_prometheus
+    network_mode: "host" # Added for host networking
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
 
   grafana:
     image: grafana/grafana:latest
     container_name: backend_local_grafana
-    ports:
-      - "3000:3000"
+    network_mode: "host" # Added for host networking
     env_file:
       - ./.envs/.local/.django
     volumes:
@@ -125,24 +124,23 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: backend_local_node_exporter
+    network_mode: "host" # Added for host networking
     restart: unless-stopped
-    ports:
-      - "9100:9100"
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: backend_local_cadvisor
+    network_mode: "host" # Added for host networking
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - "8080:8080"
 
   locust:
     image: locustio/locust:latest
     container_name: backend_local_locust
+    network_mode: "host" # Added for host networking
     depends_on:
       - django
     volumes:
@@ -151,9 +149,7 @@ services:
     command:
       - -f
       - locustfile.py
-      - --host=http://django:8000
+      - --host=http://10.10.0.101:8000 # Updated to use IP
       - --web-port=8089
-    ports:
-      - "8089:8089"
     env_file:
       - ./.envs/.local/.django
