@@ -617,10 +617,6 @@ def submit_active_exam(request):
         enrollment.disconnected_at = timezone.now()
         enrollment.save()
 
-        from appCore.tasks import submit_student_exam
-
-        submit_student_exam.control.revoke(enrollment.id)
-
         return Response(
             {
                 "message": "Exam submitted successfully.",
