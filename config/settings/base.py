@@ -70,7 +70,7 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
     # "django.contrib.humanize", # Handy template tags
     "ckeditor",
-    # "jazzmin",
+    "jazzmin",
     "django.contrib.admin",
     "django.forms",
     "channels",
