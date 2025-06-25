@@ -1,7 +1,10 @@
 from django.contrib import admin
+from django.contrib import messages
+from django.shortcuts import redirect
 from django.urls import path
 from django.utils.html import format_html
 
+from .models import AdminNotification
 from .models import CeleryTask
 from .views import task_last_updated
 
@@ -76,3 +79,50 @@ class CeleryTaskAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     # Pass timestamp to template
+
+
+@admin.register(AdminNotification)
+class AdminNotificationAdmin(admin.ModelAdmin):
+    list_display = ("text", "level", "created_at", "is_read")
+    list_filter = ("level", "is_read", "created_at")
+    search_fields = ("text",)
+    ordering = ("-created_at",)
+    actions = ["mark_selected_as_read"]
+
+    # Admin action to mark selected as read
+    @admin.action(description="Mark selected notifications as read")
+    def mark_selected_as_read(self, request, queryset):
+        updated = queryset.update(is_read=True)
+        self.message_user(
+            request,
+            f"{updated} notification(s) marked as read.",
+            messages.SUCCESS,
+        )
+
+    # Add custom admin button to mark all as read
+    def changelist_view(self, request, extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+
+        extra_context["mark_all_as_read_url"] = "mark-all-read/"
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "mark-all-read/",
+                self.admin_site.admin_view(self.mark_all_as_read),
+                name="mark_all_notifications_as_read",
+            ),
+        ]
+        return custom_urls + urls
+
+    def mark_all_as_read(self, request):
+        count = AdminNotification.objects.filter(is_read=False).update(is_read=True)
+        self.message_user(
+            request,
+            f"{count} unread notification(s) marked as read.",
+            messages.SUCCESS,
+        )
+        return redirect("..")

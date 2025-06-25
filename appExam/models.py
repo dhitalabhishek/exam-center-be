@@ -89,7 +89,7 @@ class ExamSession(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.exam} - {self.base_start.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.exam} - {self.base_start}"
 
     @property
     def effective_start(self):
@@ -194,6 +194,7 @@ class HallAndStudentAssignment(models.Model):
 class Question(models.Model):
     text = models.TextField()
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+    weightage = models.IntegerField(default=1)
 
     class Meta:
         constraints = [
@@ -226,6 +227,7 @@ class StudentExamEnrollment(models.Model):
     STATUS_CHOICES = [
         ("inactive", "Inactive"),
         ("active", "Active"),
+        ("paused", "Paused"),
         ("submitted", "Submitted"),
     ]
 
@@ -248,6 +250,7 @@ class StudentExamEnrollment(models.Model):
     individual_duration = models.DurationField(default=timedelta(minutes=60))
     connection_start = models.DateTimeField(null=True, blank=True)
     disconnected_at = models.DateTimeField(null=True, blank=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
     paused_duration = models.DurationField(default=timedelta())
 
     # Connection status
@@ -266,18 +269,17 @@ class StudentExamEnrollment(models.Model):
 
     @property
     def effective_time_remaining(self):
-        if not self.session_started_at or self.status != "active":
+        if not self.session_started_at or self.status not in ["active", "paused"]:
             return timedelta(0)
 
         base_elapsed = timezone.now() - self.session_started_at
 
-        # Add live paused time if disconnected now
-        if self.disconnected_at and not self.present:
-            live_paused = timezone.now() - self.disconnected_at
-        else:
-            live_paused = timedelta(0)
+        ongoing_pause = timedelta()
+        if self.status == "paused" and self.paused_at:
+            ongoing_pause = timezone.now() - self.paused_at
 
-        adjusted_elapsed = base_elapsed - self.paused_duration - live_paused
+        total_pause = self.paused_duration + ongoing_pause
+        adjusted_elapsed = base_elapsed - total_pause
 
         remaining = self.individual_duration - adjusted_elapsed
         return max(remaining, timedelta(0))
@@ -287,29 +289,38 @@ class StudentExamEnrollment(models.Model):
         """Check if time has expired"""
         return self.effective_time_remaining <= timedelta(0)
 
+    def pause(self):
+        if self.status == "active":
+            self.status = "paused"
+            self.paused_at = timezone.now()
+            self.save()
+            return True
+        return False
+
+    def resume(self):
+        if self.status == "paused" and self.paused_at:
+            paused_time = timezone.now() - self.paused_at
+            self.paused_duration += paused_time
+            self.paused_at = None
+            self.status = "active"
+            self.save()
+            return True
+        return False
+
     def handle_connect(self):
-        """Process student connection"""
+        """Simplified: Always treat connection as start/resume"""
         if self.session.status != "ongoing":
             return False
 
         self.present = True
-
-        if not self.connection_start:
-            # First connection
-            self.connection_start = timezone.now()
-            self.status = "active"
-        elif self.disconnected_at:
-            # Resume timing from pause
-            pause_duration = timezone.now() - self.disconnected_at
-            self.paused_duration += pause_duration
-            self.connection_start += pause_duration
-
+        self.connection_start = timezone.now()
+        self.status = "active"
         self.disconnected_at = None
         self.save()
         return True
 
     def handle_disconnect(self):
-        """Process student disconnection"""
+        """Log disconnection time"""
         self.present = False
         self.disconnected_at = timezone.now()
         self.save()

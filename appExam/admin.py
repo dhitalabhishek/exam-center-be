@@ -6,7 +6,6 @@ from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Count
 from django.http import HttpResponseRedirect
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -25,7 +24,6 @@ from django.views.decorators.http import require_http_methods
 
 from appCore.tasks import pause_exam_session
 from appCore.tasks import resume_exam_session
-from appInstitutions.models import Program
 
 from .forms import DocumentUploadForm
 from .models import Answer
@@ -122,27 +120,18 @@ class HallAdmin(admin.ModelAdmin):
     list_per_page = 10
 
 
-import logging
+import logging  # noqa: E402
+
 logger = logging.getLogger(__name__)
+
+
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
     list_filter = ("program",)
     list_per_page = 10
-    logger.debug("testing logger👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉👉")
-
 
     def get_list_display(self, request):
-        has_any = Program.objects.annotate(
-            subject_count=Count("subjects")
-        ).filter(subject_count__gt=0).exists()
-
-        logger.debug("ExamAdmin.get_list_display 👉 has_any_subjects = %s", has_any)
-
-        cols = ["id", "program"]
-        if has_any:
-            cols.append("subject")
-        cols.append("total_marks")
-        return cols
+        return ["id", "program", "total_marks"]
 
 
 # Inline for enrollments within ExamSession detail
@@ -440,7 +429,7 @@ class QuestionAdmin(admin.ModelAdmin):
             text = escape(ans.text)
             if ans.is_correct:
                 formatted.append(
-                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text} ✅</a>",  # noqa: E501
+                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text} </a>",  # noqa: E501
                 )
             else:
                 formatted.append(f"<a href='{url}'>{text}</a>")
@@ -611,74 +600,60 @@ class QuestionAdmin(admin.ModelAdmin):
 
     @method_decorator(csrf_exempt)
     def parse_questions_view(self, request):
-        """AJAX view to parse questions from document"""
+        """AJAX or form view to parse questions from submitted document text"""
         if request.method != "POST":
             return JsonResponse({"error": "Method not allowed"}, status=405)
 
         try:
             session_id = request.session.get("session_id")
-            document_content = request.session.get("document_content")
-            temp_file_path = request.session.get("temp_file_path")
-
-            if not session_id or not document_content:
+            if not session_id:
                 return JsonResponse(
-                    {"error": "Session expired. Please start over."},
+                    {"error": "Session expired or missing session ID."},
                     status=400,
                 )
 
             session = get_object_or_404(ExamSession, id=session_id)
 
-            # Parse questions from document
-            if temp_file_path and Path(temp_file_path).exists():
-                # For .docx files, use the temp file
-                from .utils.questionParser import parse_questions_from_docx
+            #  Get edited content from textarea
+            document_content = request.POST.get("document_content", "").strip()
+            if not document_content:
+                return JsonResponse({"error": "Document content is empty."}, status=400)
 
-                parsed_data = parse_questions_from_docx(temp_file_path)
+            #  Parse questions from content
+            from .utils.questionParser import parse_questions_from_document
 
-                # Clean up temp file
-                Path(temp_file_path).unlink()
-                request.session.pop("temp_file_path", None)
-            else:
-                # For .txt files, use the content
-                from .utils.questionParser import parse_questions_from_document
+            parsed_data = parse_questions_from_document(document_content)
 
-                parsed_data = parse_questions_from_document(document_content)
-
-            # Create questions and answers
             created_count = 0
             for question_data in parsed_data:
                 question = Question.objects.create(
                     text=question_data["question"],
                     session=session,
                 )
-
                 for answer_data in question_data["answers"]:
                     Answer.objects.create(
                         question=question,
                         text=answer_data["text"],
                         is_correct=answer_data["is_correct"],
                     )
-
                 created_count += 1
 
-            # Clear session data
-            request.session.pop("document_content", None)
-            request.session.pop("document_name", None)
-            request.session.pop("session_id", None)
+            #  Optionally clear session
+            for key in [
+                "document_content",
+                "document_name",
+                "session_id",
+                "temp_file_path",
+            ]:
+                request.session.pop(key, None)
 
-            return JsonResponse(
-                {
-                    "success": True,
-                    "message": f"Successfully imported {created_count} questions with answers.",  # noqa: E501
-                    "redirect_url": reverse("admin:appExam_question_changelist"),
-                },
+            # Redirect back to question list after success
+            messages.success(
+                request,
+                f"Successfully imported {created_count} questions.",
             )
+            return redirect("admin:appExam_question_changelist")
 
-        except (OSError, ValueError) as e:
-            # Clean up any remaining temp files
-            temp_file_path = request.session.get("temp_file_path")
-            if temp_file_path and Path(temp_file_path).exists():
-                Path(temp_file_path).unlink()
-                request.session.pop("temp_file_path", None)
-
-            return JsonResponse({"error": str(e)}, status=500)
+        except Exception as e:  # noqa: BLE001
+            messages.error(request, f"Failed to import questions: {e!s}")
+            return redirect("admin:appExam_question_import")

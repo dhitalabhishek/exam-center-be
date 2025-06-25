@@ -403,6 +403,7 @@ JAZZMIN_UI_TWEAKS = {
 JAZZMIN_SETTINGS = {
     "hide_apps": ["account", "authtoken", "mfa", "sites"],
     "show_ui_builder": True,
+    "custom_js": "js/admin_notifications.js",  # inside static/
 }
 
 

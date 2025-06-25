@@ -1,0 +1,11 @@
+<span id="notification-unread-count" data-count="{{ unread_count }}"></span>
+{% for n in admin_notifications %}
+  <a href="{% url 'admin:appCore_adminnotification_change' n.id %}" class="dropdown-item">
+    <strong>{{ n.level|title }}</strong>: {{ n.text|truncatechars:40 }}
+    <br /><small class="text-muted">{{ n.created_at }}</small>
+  </a>
+{% empty %}
+  <span class="dropdown-item text-muted">No notifications</span>
+{% endfor %}
+<div class="dropdown-divider"></div>
+<a href="{% url 'admin:appCore_adminnotification_changelist' %}" class="dropdown-item dropdown-footer">View All</a>

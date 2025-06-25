@@ -15,6 +15,8 @@ from appAuthentication.utils.biometric_view import webcam_capture_view
 from appAuthentication.views import admin_register_view
 from appAuthentication.views import custom_admin_login_view
 from appCore.views import log_view
+from appCore.views import mark_notification_read
+from appCore.views import notification_fragment
 
 admin.site.site_header = "Exam Admin"
 admin.site.site_title = "Admin"
@@ -42,6 +44,9 @@ urlpatterns = [
         admin.site.admin_view(webcam_capture_view),
         name="biometric-verification",
     ),
+    path("admin/notifications/fragment/", notification_fragment,name="admin_notifications_fragment"),  # noqa: E501
+    path("admin/notifications/read/<int:pk>/", mark_notification_read, name="admin_notifications_read"),  # noqa: E501
+
     path("admin/logs/", log_view, name="log_view"),
     path("institute/register/", admin_register_view, name="admin_register"),
     path("institute/login/", custom_admin_login_view, name="admin_login"),

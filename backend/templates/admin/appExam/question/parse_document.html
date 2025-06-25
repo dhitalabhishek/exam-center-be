@@ -1,530 +1,180 @@
-<!-- templates/admin/appExam/question/parse_document.html -->
 {% extends 'admin/base_site.html' %}
 {% load static %}
-{% load admin_urls %}
 
 {% block title %}
-Parse Questions
+  Import Questions - {{ session }}
 {% endblock %}
 
 {% block extrahead %}
-<script src="{% static 'appAuthentication/mfs100/jquery-1.8.2.js' %}"></script>
-<style>
-/* Full width content container */
-#content {
-    max-width: none !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 30px 40px;
-}
-
-/* Main container styling */
-.parse-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-    border-radius: 20px;
-    padding: 40px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-    color: white;
-}
-
-/* Header section */
-.header-section {
-    text-align: center;
-    margin-bottom: 40px;
-    padding-bottom: 30px;
-    border-bottom: 2px solid rgba(255,255,255,0.2);
-}
-
-.header-section h1 {
-    font-size: 2.5rem;
-    font-weight: 300;
-    margin-bottom: 10px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-}
-
-.header-section h2 {
-    font-size: 1.4rem;
-    font-weight: 400;
-    opacity: 0.9;
-    margin: 0;
-}
-
-/* Document edit section */
-.edit-section {
-    background: rgba(255,255,255,0.95);
-    border-radius: 15px;
-    padding: 30px;
-    margin: 30px 0;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-}
-
-.edit-section h3 {
-    color: #333;
-    font-size: 1.5rem;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 3px solid #6c757d;
-    display: inline-block;
-}
-
-.document-editor {
-    width: 100%;
-    min-height: 400px;
-    background: #f8f9fa;
-    border: 2px solid #e9ecef;
-    border-radius: 10px;
-    padding: 25px;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #333;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
-    resize: vertical;
-    overflow-y: auto;
-}
-
-.document-editor:focus {
-    outline: none;
-    border-color: #6c757d;
-    box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2);
-}
-
-/* Editor controls */
-.editor-controls {
-    margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid #e9ecef;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    color: #666;
-}
-
-.editor-info {
-    font-size: 0.9rem;
-    color: #6c757d;
-}
-
-.editor-actions {
-    margin-left: auto;
-}
-
-.btn-small {
-    padding: 8px 16px;
-    font-size: 0.9rem;
-    border-radius: 20px;
-    background: #6c757d;
-    color: white;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.btn-small:hover {
-    background: #5a6268;
-    transform: translateY(-1px);
-}
-
-/* Loading section */
-.loading {
-    display: none;
-    text-align: center;
-    padding: 50px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 15px;
-    margin: 30px 0;
-    backdrop-filter: blur(10px);
-}
-
-.spinner {
-    border: 4px solid rgba(255,255,255,0.3);
-    border-top: 4px solid #ffffff;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.loading p {
-    font-size: 1.2rem;
-    margin: 0;
-    opacity: 0.9;
-}
-
-/* Result messages */
-#result-message {
-    margin: 30px 0;
-}
-
-.success {
-    background: linear-gradient(135deg, #28a745, #20a43a) !important;
-    border: none !important;
-    color: white !important;
-    padding: 25px !important;
-    border-radius: 15px !important;
-    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3) !important;
-    font-size: 1.1rem;
-    line-height: 1.6;
-}
-
-.error {
-    background: linear-gradient(135deg, #dc3545, #c82333) !important;
-    border: none !important;
-    color: white !important;
-    padding: 25px !important;
-    border-radius: 15px !important;
-    box-shadow: 0 8px 25px rgba(220, 53, 69, 0.3) !important;
-    font-size: 1.1rem;
-    line-height: 1.6;
-}
-
-/* Action buttons */
-.action-section {
-    text-align: center;
-    margin-top: 40px;
-    padding-top: 30px;
-    border-top: 2px solid rgba(255,255,255,0.2);
-}
-
-.btn {
-    display: inline-block;
-    padding: 15px 30px;
-    margin: 10px;
-    border: none;
-    border-radius: 50px;
-    font-size: 1.1rem;
-    font-weight: 500;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.btn-primary {
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    color: white;
-}
-
-.btn-primary:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 35px rgba(0, 123, 255, 0.4);
-}
-
-.btn-primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-}
-
-.btn-secondary {
-    background: rgba(255,255,255,0.2);
-    color: white;
-    backdrop-filter: blur(10px);
-}
-
-.btn-secondary:hover {
-    background: rgba(255,255,255,0.3);
-    transform: translateY(-3px);
-    box-shadow: 0 12px 35px rgba(255,255,255,0.2);
-}
-
-/* Success/Error button in messages */
-.success .btn, .error .btn {
-    background: rgba(255,255,255,0.2);
-    color: white;
-    border: 2px solid white;
-    margin-top: 15px;
-}
-
-.success .btn:hover, .error .btn:hover {
-    background: white;
-    color: #333;
-}
-
-/* Debug info styling */
-.debug-info {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: rgba(0,0,0,0.8);
-    color: #28a745;
-    padding: 15px;
-    border-radius: 10px;
-    font-size: 12px;
-    max-width: 300px;
-    z-index: 1000;
-    display: none;
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-    #content {
-        padding: 20px;
+  <style>
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: Arial, sans-serif;
     }
     
-    .parse-container {
-        padding: 25px;
-        border-radius: 15px;
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
     }
     
-    .header-section h1 {
-        font-size: 2rem;
+    h2 {
+      font-size: 18px;
+      margin-top: 30px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      color: #333;
+      overflow: hidden;
+      resize: none;
+    }
+    
+    .valid {
+      color: green;
+      font-weight: bold;
+    }
+    
+    .invalid {
+      color: red;
+      font-weight: bold;
     }
     
     .btn {
-        display: block;
-        width: 100%;
-        margin: 10px 0;
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 16px;
+      font-size: 14px;
+      background-color: #007bff;
+      color: white;
+      text-decoration: none;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
     }
     
-    .editor-controls {
-        flex-direction: column;
-        gap: 15px;
-        align-items: stretch;
+    .btn:hover {
+      background-color: #0056b3;
     }
     
-    .editor-actions {
-        margin-left: 0;
+    .back-link {
+      margin-left: 15px;
+      font-size: 13px;
+      text-decoration: underline;
+      color: #555;
     }
-}
-
-/* Animation for content reveal */
-.parse-container {
-    animation: slideInUp 0.6s ease-out;
-}
-
-@keyframes slideInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
+    
+    .meta {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 10px;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+  </style>
+  <script>
+    function autoResize(el) {
+      el.style.height = 'auto'
+      el.style.height = el.scrollHeight + 'px'
     }
-}
-</style>
-{% endblock %}
-
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-    <a href="{% url 'admin:index' %}">Home</a>
-    &rsaquo; <a href="{% url 'admin:appExam_question_changelist' %}">Questions</a>
-    &rsaquo; <a href="{% url 'admin:appExam_question_import' %}">Import Questions</a>
-    &rsaquo; Parse Document
-</div>
+    
+    window.addEventListener('load', function () {
+      const textarea = document.querySelector('textarea')
+      if (textarea) {
+        autoResize(textarea)
+        textarea.addEventListener('input', () => autoResize(textarea))
+      }
+    })
+    
+    window.addEventListener('DOMContentLoaded', function () {
+      const form = document.querySelector('form')
+      const responseBox = document.getElementById('response-message')
+    
+      if (form && responseBox) {
+        form.addEventListener('submit', async function (e) {
+          e.preventDefault()
+    
+          const formData = new FormData(form)
+          const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]').value
+    
+          const res = await fetch(form.action, {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': csrfToken
+            },
+            body: formData
+          })
+    
+          const result = await res.json()
+          if (result.success) {
+            responseBox.innerHTML = `<div class="valid">${result.message}</div>`
+            setTimeout(() => {
+              window.location.href = result.redirect_url
+            }, 1500)
+          } else {
+            responseBox.innerHTML = `<div class="invalid">❌ ${result.error || 'Something went wrong'}</div>`
+          }
+        })
+      }
+    })
+    
+    function downloadTextarea() {
+      const textarea = document.querySelector('textarea')
+      if (!textarea) return
+    
+      const content = textarea.value
+      const blob = new Blob([content], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+    
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'questions.txt'
+      a.click()
+    
+      URL.revokeObjectURL(url)
+    }
+  </script>
 {% endblock %}
 
 {% block content %}
-<div class="parse-container">
-    <div class="header-section">
-        <h1>Parse Questions</h1>
-        <h2>{{ document_name }} → {{ session }}</h2>
+  <div class="container">
+    <h1>Import Questions – {{ session }}</h1>
+
+    <div class="meta">
+      <strong>Document:</strong> {{ document_name }}
     </div>
-
-    <div class="edit-section">
-        <h3>Edit Document Content</h3>
-        <textarea class="document-editor" id="document-content" placeholder="Edit your document content here...">{{ document_content }}</textarea>
-        
-        <div class="editor-controls">
-            <div class="editor-info">
-                <span id="char-count">{{ document_content|length }}</span> characters |
-                <span id="line-count">{{ document_content|linebreaksbr|length }}</span> lines
-            </div>
-            <div class="editor-actions">
-                <button type="button" class="btn-small" id="clear-btn">Clear All</button>
-                <button type="button" class="btn-small" id="reset-btn">Reset</button>
-            </div>
-        </div>
+    <div class="meta">
+      <strong>Session:</strong> {{ session }}
     </div>
+    <button type="button" class="btn" onclick="downloadTextarea()">⬇️ Download as Plain Text</button>
 
-    <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <p>Parsing questions and creating entries...</p>
-    </div>
+    <h2>**Please Make Sure Every Question is Valid before submission</h2>
+    <form method="post" action="{% url 'admin:appExam_question_parse' %}">
+      {% csrf_token %}
+      <textarea name="document_content">{{ document_content }}</textarea>
 
-    <div id="result-message" style="display: none;"></div>
+      <h2>Validation Results</h2>
+      {% if validation_result.is_valid %}
+        <div class="valid">The document format is valid.</div>
+      {% else %}
+        <div class="invalid">⚠️ {{ validation_result.message }}</div>
+      {% endif %}
 
-    <div class="action-section" id="action-buttons">
-        <button type="button" id="parse-btn" class="btn btn-primary">
-            Parse Questions
-        </button>
-        <a href="{% url 'admin:appExam_question_import_document' session.id %}" class="btn btn-secondary">
-            Back to Upload
-        </a>
-    </div>
-</div>
-
-<!-- Debug Panel (Toggle with Ctrl+D) -->
-<div class="debug-info" id="debug-panel">
-    <strong>DEBUG INFO</strong><br>
-    Session ID: {{ session.id }}<br>
-    Document: {{ document_name }}<br>
-    Content Length: <span id="debug-length">{{ document_content|length }}</span> chars<br>
-    Timestamp: <span id="debug-time"></span>
-</div>
-
-<script>
-$(document).ready(function () {
-    var originalContent = `{{ document_content|escapejs }}`;
-    var $editor = $('#document-content');
-    var $charCount = $('#char-count');
-    var $lineCount = $('#line-count');
-    var $debugLength = $('#debug-length');
-    
-    // Update debug timestamp
-    $('#debug-time').text(new Date().toLocaleTimeString());
-    
-    // Toggle debug panel with Ctrl+D
-    $(document).keydown(function(e) {
-        if (e.ctrlKey && e.keyCode === 68) { // Ctrl+D
-            e.preventDefault();
-            $('#debug-panel').toggle();
-        }
-    });
-    
-    // Update character and line count
-    function updateCounts() {
-        var content = $editor.val();
-        var charCount = content.length;
-        var lineCount = content.split('\n').length;
-        
-        $charCount.text(charCount);
-        $lineCount.text(lineCount);
-        $debugLength.text(charCount);
-    }
-    
-    // Editor event handlers
-    $editor.on('input keyup', updateCounts);
-    
-    // Clear button
-    $('#clear-btn').click(function() {
-        if (confirm('Are you sure you want to clear all content?')) {
-            $editor.val('');
-            updateCounts();
-            $editor.focus();
-        }
-    });
-    
-    // Reset button
-    $('#reset-btn').click(function() {
-        if (confirm('Reset to original content?')) {
-            $editor.val(originalContent);
-            updateCounts();
-            $editor.focus();
-        }
-    });
-    
-    // Enhanced button click handler with better error handling
-    $('#parse-btn').click(function () {
-        console.log('Parse button clicked');
-        
-        var button = $(this);
-        var originalText = button.html();
-        var editedContent = $editor.val().trim();
-        
-        // Validate content
-        if (!editedContent) {
-            alert('Please enter some content to parse.');
-            $editor.focus();
-            return;
-        }
-        
-        // Disable button and show loading
-        button.prop('disabled', true).html('Processing...');
-        $('#loading').show();
-        $('#action-buttons').hide();
-        $('#result-message').hide();
-        
-        // AJAX request with enhanced error handling
-        $.ajax({
-            url: '{% url "admin:appExam_question_parse" %}',
-            type: 'POST',
-            data: {
-                csrfmiddlewaretoken: '{{ csrf_token }}',
-                edited_content: editedContent
-            },
-            timeout: 30000, // 30 second timeout
-            success: function (response) {
-                console.log('Success response:', response);
-                $('#loading').hide();
-                
-                if (response.success) {
-                    $('#result-message')
-                        .html(`
-                            <div class="success">
-                                <strong>Success!</strong><br>
-                                ${response.message}<br><br>
-                                <a href="${response.redirect_url}" class="btn">
-                                    View Questions
-                                </a>
-                            </div>
-                        `)
-                        .show();
-                } else {
-                    showError(response.error || 'Unknown error occurred');
-                }
-            },
-            error: function (xhr, status, error) {
-                console.error('AJAX Error:', {xhr, status, error});
-                $('#loading').hide();
-                
-                var errorMsg = 'Network error occurred';
-                
-                if (status === 'timeout') {
-                    errorMsg = 'Request timed out. Please try again.';
-                } else if (xhr.responseText) {
-                    try {
-                        var response = JSON.parse(xhr.responseText);
-                        errorMsg = response.error || errorMsg;
-                    } catch (e) {
-                        errorMsg = `Server error (${xhr.status}): ${xhr.statusText}`;
-                    }
-                }
-                
-                showError(errorMsg);
-            }
-        });
-        
-        function showError(errorMsg) {
-            $('#result-message')
-                .html(`
-                    <div class="error">
-                        <strong>Error:</strong><br>
-                        ${errorMsg}
-                    </div>
-                `)
-                .show();
-            $('#action-buttons').show();
-            button.prop('disabled', false).html(originalText);
-        }
-    });
-    
-    // Add some interactive effects
-    $('.btn').hover(
-        function() {
-            $(this).css('transform', 'translateY(-2px)');
-        },
-        function() {
-            if (!$(this).prop('disabled')) {
-                $(this).css('transform', 'translateY(0)');
-            }
-        }
-    );
-    
-    // Initialize counts
-    updateCounts();
-    
-    console.log('Parse document template initialized');
-});
-</script>
+      <button type="submit" class="btn">✅ Parse & Save Questions</button>
+      <a href="{% url 'admin:appExam_question_import' %}" class="back-link">← Back to Session List</a>
+    </form>
+  </div>
 {% endblock %}

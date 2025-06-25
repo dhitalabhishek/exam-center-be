@@ -6,6 +6,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.db import transaction
 from django.utils import timezone
 
+from appCore.models import AdminNotification  # Ensure this is imported
 from appCore.tasks import complete_expired_sessions
 from appCore.tasks import submit_student_exam
 from appCore.utils.redis_client import get_redis_client
@@ -31,13 +32,11 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
             await self.send_error("No active enrollment")
             return await self.close()
 
-        # Initial sync and timers
         await self._sync_and_start_timer()
-        await self.send_status()
-        return None
+        await self.send_status()  # noqa: RET503
 
     async def disconnect(self, code):
-        await self._pause_timer()
+        await self._log_disconnect()
 
     async def receive_json(self, data, **kwargs):
         msg_type = data.get("type")
@@ -50,6 +49,7 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
         await handler(data)
 
     # --- Handlers ---
+
     async def _handle_ping(self, data):
         await self.send_json({"type": "pong"})
 
@@ -57,11 +57,11 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
         await self.send_error(f"Unknown type: {data.get('type')}")
 
     async def _handle_complete_check(self, data):
-        # trigger session completion if needed
         await sync_to_async(complete_expired_sessions.delay)()
         await self.send_status()
 
     # --- Core logic ---
+
     @sync_to_async
     def _fetch_enrollment(self):
         try:
@@ -77,10 +77,10 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
     def _sync_and_start_timer(self):
         enroll = self.enrollment
         enroll.refresh_from_db()
-        # Resume student if session ongoing and not present
+
         if enroll.session.status == "ongoing" and not enroll.present:
             enroll.handle_connect()
-            # schedule submission when time expires
+
             remaining = enroll.effective_time_remaining.total_seconds()
             if remaining > 0:
                 submit_student_exam.apply_async(
@@ -92,17 +92,17 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
 
     @sync_to_async
     @transaction.atomic
-    def _pause_timer(self):
+    def _log_disconnect(self):
         enroll = self.enrollment
-        if enroll.present:
+        if enroll.present and enroll.session.status == "ongoing":
             enroll.handle_disconnect()
-            # revoke any scheduled submit task
-            try:
-                from celery import current_app
 
-                current_app.control.revoke(f"submit_exam_{enroll.id}", terminate=True)
-            except Exception as e:
-                logger.error(f"Failed to revoke submit task: {e}")
+            AdminNotification.objects.create(
+                text=f"{enroll.candidate.full_name} disconnected during the exam.",
+                level="warning",
+            )
+        elif enroll.present:
+            enroll.handle_disconnect()
         return True
 
     async def send_status(self, data=None):
@@ -144,8 +144,8 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
             client.delete(key)
             try:
                 return json.loads(raw)
-            except Exception:
-                logger.error("Invalid JSON event for %s", key)
+            except Exception:  # noqa: BLE001
+                logger.error("Invalid JSON event for %s", key)  # noqa: TRY400
         return None
 
     async def send_error(self, msg):

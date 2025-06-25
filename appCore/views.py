@@ -4,14 +4,20 @@ import logging
 from datetime import timedelta
 
 from django.contrib.admin.models import LogEntry
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import user_passes_test
 from django.db.models import Q
 from django.http import HttpResponse
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
+from appCore.models import AdminNotification
 from appCore.utils.redis_client import get_redis_client
 from appExam.models import StudentExamEnrollment
 
@@ -261,6 +267,30 @@ def download_json(logs):
 
     response.write(json.dumps(logs_data, indent=2))
     return response
+
+
+@staff_member_required
+def notification_fragment(request):
+    notifications = AdminNotification.objects.order_by("-created_at")[:10]
+    unread_count = AdminNotification.objects.filter(is_read=False).count()
+    return render(
+        request,
+        "admin/partials/notification_dropdown.html",
+        {
+            "admin_notifications": notifications,
+            "unread_count": unread_count,
+        },
+    )
+
+
+@csrf_exempt
+@require_POST
+@staff_member_required
+def mark_notification_read(request, pk):
+    notification = get_object_or_404(AdminNotification, pk=pk)
+    notification.is_read = True
+    notification.save()
+    return HttpResponse("OK")
 
 
 # Ultra-fast cached status endpoint for frequent polling
