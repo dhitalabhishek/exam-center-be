@@ -20,6 +20,12 @@ admin.site.login_form = DualPasswordAuthenticationForm
 
 
 class AdminUserChangeForm(forms.ModelForm):
+    old_admin_password2 = forms.CharField(
+        label=_("Old Second Password"),
+        widget=forms.PasswordInput,
+        required=False,
+        help_text=_("Required to change the second password."),
+    )
     new_admin_password2 = forms.CharField(
         label=_("New Second Password"),
         widget=forms.PasswordInput,
@@ -31,7 +37,23 @@ class AdminUserChangeForm(forms.ModelForm):
         model = User
         fields = ("email", "is_staff", "is_superuser", "is_admin", "admin_password2")
 
-    def save(self, commit=True):
+    def clean(self):
+        cleaned_data = super().clean()
+        user = self.instance
+        old_pass = cleaned_data.get("old_admin_password2")
+        new_pass = cleaned_data.get("new_admin_password2")
+
+        if user.admin_password2:
+            # If second password is already set, old must be provided and correct
+            if new_pass and not old_pass:
+                msg = "Old second password is required to set a new one."
+                raise forms.ValidationError(msg)
+            if new_pass and old_pass and not user.check_admin_password2(old_pass):
+                msg = "Old second password is incorrect."
+                raise forms.ValidationError(msg)
+        return cleaned_data
+
+    def save(self, commit=True):  # noqa: FBT002
         user = super().save(commit=False)
         new_pass = self.cleaned_data.get("new_admin_password2")
         if new_pass:
