@@ -11,7 +11,6 @@ from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
-from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
@@ -52,7 +51,9 @@ def task_last_updated(request):
     last_task = CeleryTask.objects.order_by("-updated").first()
     return JsonResponse(
         {
-            "last_updated": last_task.updated.timestamp() if last_task else 0,
+            "last_updated": timezone.localtime(last_task.updated).timestamp()
+            if last_task
+            else 0,
         },
     )
 
@@ -255,9 +256,9 @@ def download_json(logs):
 
         logs_data.append(
             {
-                "date": log.action_time.strftime("%Y-%m-%d"),
-                "time": log.action_time.strftime("%H:%M:%S"),
-                "datetime": log.action_time.isoformat(),
+                "date": timezone.localtime(log.action_time).strftime("%Y-%m-%d"),
+                "time": timezone.localtime(log.action_time).strftime("%H:%M:%S"),
+                "datetime": timezone.localtime(log.action_time).isoformat(),
                 "user": log.user.email if log.user else "System",
                 "action": action_text,
                 "object": log.object_repr,

@@ -10,10 +10,9 @@ from django.views import defaults as default_views
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 
+from appAuthentication.utils.ajax_views import check_admin_second_password
 from appAuthentication.utils.biometric_view import get_candidate_details
 from appAuthentication.utils.biometric_view import webcam_capture_view
-from appAuthentication.views import admin_register_view
-from appAuthentication.views import custom_admin_login_view
 from appCore.views import log_view
 from appCore.views import mark_notification_read
 from appCore.views import notification_fragment
@@ -28,6 +27,8 @@ urlpatterns = [
     # path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),  # noqa: E501, ERA001
     # path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),  # noqa: E501, ERA001
     # Admin
+        path("check-second-password/", check_admin_second_password, name="check_second_password"),  # noqa: E501
+
     path(
         f"{settings.ADMIN_URL}flows/exam-creation/",
         include("appCore.flows.flow_1_handelingExamCreation.flows_urls"),
@@ -48,9 +49,9 @@ urlpatterns = [
     path("admin/notifications/read/<int:pk>/", mark_notification_read, name="admin_notifications_read"),  # noqa: E501
 
     path("admin/logs/", log_view, name="log_view"),
-    path("institute/register/", admin_register_view, name="admin_register"),
-    path("institute/login/", custom_admin_login_view, name="admin_login"),
+
     path(settings.ADMIN_URL, admin.site.urls),
+
     # Monitoring
     path("", include("django_prometheus.urls")),
     # App includes

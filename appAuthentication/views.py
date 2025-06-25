@@ -2,11 +2,8 @@ import logging
 import random
 from collections import defaultdict
 
-from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.contrib.auth import login
-from django.shortcuts import redirect
-from django.shortcuts import render
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.decorators import permission_classes
@@ -18,8 +15,6 @@ from appExam.models import Answer
 from appExam.models import Question
 from appExam.models import StudentExamEnrollment
 
-from .forms import AdminRegisterForm
-from .forms import DualPasswordAdminLoginForm
 from .models import Candidate
 from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
@@ -35,30 +30,6 @@ def get_tokens_for_user(user):
         "refresh": str(refresh),
         "access": str(refresh.access_token),
     }
-
-
-def admin_register_view(request):
-    if request.method == "POST":
-        form = AdminRegisterForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(
-                request,
-                "Admin registered successfully. You can now log in.",
-            )
-            return redirect("admin:login")
-    else:
-        form = AdminRegisterForm()
-    return render(request, "custom_admin/register.html", {"form": form})
-
-
-def custom_admin_login_view(request):
-    form = DualPasswordAdminLoginForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        user = form.cleaned_data["user"]
-        login(request, user)
-        return redirect("admin:index")
-    return render(request, "custom_admin/login.html", {"form": form})
 
 
 # ------------------------- Candidate Registration -------------------------
@@ -179,14 +150,15 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
         )
 
         start_time = (
-            session.base_start.strftime("%H:%M:%S")
+            timezone.localtime(session.base_start).isoformat()
             if session and session.base_start
             else None
         )
+
         duration = session.base_duration if session and session.base_duration else None
 
     except StudentExamEnrollment.DoesNotExist:
-        shift_id = shift_plan_id = shift_plan_program_id = seat_number = start_time = (
+        shift_id = shift_plan_id = shift_plan_program_id = seat_number = start_time = (  # noqa: F841
             duration
         ) = None
 
@@ -204,7 +176,7 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
         "phone": candidate.phone,
         "symbol_number": candidate.symbol_number,
         "date_of_birth": candidate.dob_nep,
-        "photo": get_image_url("candidate.profile_image"),
+        "photo": get_image_url("candidate.initial_image"),
         "biometric_image": get_image_url("candidate.biometric_image"),
         "right_thumb_image": get_image_url("candidate.right_thumb_image"),
         "left_thumb_image": get_image_url("candidate.left_thumb_image"),

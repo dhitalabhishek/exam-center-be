@@ -86,7 +86,7 @@ def get_exam_session_view(request):
         "subject": exam.subject.name if exam.subject else None,
         "total_marks": exam.total_marks,
         "description": exam.description,
-        "start_time": enrollment.session_started_at
+        "start_time": timezone.localtime(enrollment.session_started_at).isoformat()
         if enrollment.session_started_at
         else None,
         "duration_minutes": duration_minutes,
@@ -556,11 +556,17 @@ def get_exam_review(request):
             "subject": exam.subject.name if exam.subject else None,
             "total_marks": exam.total_marks,
             "session_id": session.id,
-            "start_time": session.base_start
+            "start_time": timezone.localtime(session.base_start).isoformat()
             if session.base_start
             else None,
-            "end_time": session.base_start + enrollment.individual_duration,
-            "submitted_at": enrollment.updated_at,
+            "end_time": timezone.localtime(
+                session.base_start + enrollment.individual_duration,
+            ).isoformat()
+            if session.base_start
+            else None,
+            "submitted_at": timezone.localtime(enrollment.updated_at).isoformat()
+            if enrollment.updated_at
+            else None,
         }
 
         return Response(

@@ -1,55 +1,47 @@
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import AuthenticationForm
 
-from .models import User
+
+class EmailAuthenticationForm(AuthenticationForm):
+    username = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={"autofocus": True}),
+    )
 
 
-class AdminRegisterForm(forms.ModelForm):
-    password1 = forms.CharField(label="Password 1", widget=forms.PasswordInput)
-    confirm_password1 = forms.CharField(label="Confirm Password 1", widget=forms.PasswordInput)
-    password2 = forms.CharField(label="Password 2", widget=forms.PasswordInput)
-    confirm_password2 = forms.CharField(label="Confirm Password 2", widget=forms.PasswordInput)
 
-    class Meta:
-        model = User
-        fields = ("email",)
+User = get_user_model()
+
+class DualPasswordAuthenticationForm(AuthenticationForm):
+    username = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={"autofocus": True}),
+    )
+    second_password = forms.CharField(
+        label="Second Password",
+        widget=forms.PasswordInput,
+        required=False,
+    )
 
     def clean(self):
         cleaned_data = super().clean()
-        if cleaned_data.get("password1") != cleaned_data.get("confirm_password1"):
-            raise forms.ValidationError("Password 1 and Confirm Password 1 do not match.")
-        if cleaned_data.get("password2") != cleaned_data.get("confirm_password2"):
-            raise forms.ValidationError("Password 2 and Confirm Password 2 do not match.")
-        if cleaned_data.get("password1") == cleaned_data.get("password2"):
-            raise forms.ValidationError("Password 1 and Password 2 must be different.")
-        return cleaned_data
+        email = cleaned_data.get("username")
+        password = cleaned_data.get("password")  # noqa: F841
+        second_password = cleaned_data.get("second_password")
 
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.set_password(self.cleaned_data["password1"])
-        user.admin_password2 = self.cleaned_data["password2"]
-        user.is_admin = True
-        user.is_staff = True
-        if commit:
-            user.save()
-        return user
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return cleaned_data  # let normal auth handle the error
 
-class DualPasswordAdminLoginForm(forms.Form):
-    email = forms.EmailField()
-    password1 = forms.CharField(widget=forms.PasswordInput)
-    password2 = forms.CharField(widget=forms.PasswordInput)
+        # If second password is set, require it and verify
+        if user.is_admin and user.admin_password2:
+            if not second_password:
+                msg = "Second password is required for this admin user."
+                raise forms.ValidationError(msg)
+            if not user.check_admin_password2(second_password):
+                msg = "Second password is incorrect."
+                raise forms.ValidationError(msg)
 
-    def clean(self):
-        from django.contrib.auth import authenticate
-        cleaned_data = super().clean()
-        email = cleaned_data.get("email")
-        password1 = cleaned_data.get("password1")
-        password2 = cleaned_data.get("password2")
-
-        user = authenticate(username=email, password=password1)
-        if not user or not user.is_admin:
-            raise forms.ValidationError("Invalid login credentials.")
-        if user.admin_password2 != password2:
-            raise forms.ValidationError("Second password is incorrect.")
-
-        cleaned_data["user"] = user
         return cleaned_data

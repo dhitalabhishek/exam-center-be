@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.core.files.base import ContentFile
@@ -5,34 +6,57 @@ from django.core.files.storage import default_storage
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.urls import path
+from django.utils.translation import gettext_lazy as _
 
 from appInstitutions.models import Institute
 
+from .forms import DualPasswordAuthenticationForm
 from .models import Candidate
 from .models import User
 from .tasks import process_candidates_file
 from .tasks import validate_file_format
 
+admin.site.login_form = DualPasswordAuthenticationForm
 
-class CustomUserAdmin(admin.ModelAdmin):
-    list_display = (
-        "email",
-        "last_login",
+
+class AdminUserChangeForm(forms.ModelForm):
+    new_admin_password2 = forms.CharField(
+        label=_("New Second Password"),
+        widget=forms.PasswordInput,
+        required=False,
+        help_text=_("Enter a new second password. Leave blank to keep current one."),
     )
-    ordering = ("email",)
+
+    class Meta:
+        model = User
+        fields = ("email", "is_staff", "is_superuser", "is_admin", "admin_password2")
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        new_pass = self.cleaned_data.get("new_admin_password2")
+        if new_pass:
+            user.set_admin_password2(new_pass)
+        if commit:
+            user.save()
+        return user
+
+
+@admin.register(User)
+class CustomUserAdmin(admin.ModelAdmin):
+    form = AdminUserChangeForm
+    list_display = ("email", "last_login", "is_superuser")
+    ordering = ("-is_superuser", "email")  # superusers at top
     search_fields = ("email",)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.filter(is_admin=True)
 
-    def get_form(self, request, obj=None, **kwargs):
-        if obj is None:
-            return self.add_form
-        return super().get_form(request, obj, **kwargs)
-
-
-admin.site.register(User)
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = ["admin_password2"]
+        if obj:
+            readonly_fields += ["password"]
+        return readonly_fields
 
 
 @admin.register(Candidate)

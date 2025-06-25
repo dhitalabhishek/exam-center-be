@@ -94,7 +94,11 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
     @transaction.atomic
     def _log_disconnect(self):
         enroll = self.enrollment
-        if enroll.present and enroll.session.status == "ongoing":
+        if (
+            enroll.present
+            and enroll.session.status == "ongoing"
+            and enroll.status != "submitted"
+        ):
             enroll.handle_disconnect()
 
             AdminNotification.objects.create(

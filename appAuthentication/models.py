@@ -1,3 +1,5 @@
+from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import AbstractBaseUser
 from django.contrib.auth.models import BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
@@ -41,6 +43,20 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    def set_admin_password2(self, raw_password):
+        """
+        Securely sets the admin second password using Django's password hasher.
+        """
+        self.admin_password2 = make_password(raw_password)
+
+    def check_admin_password2(self, raw_password):
+        """
+        Checks if the given password matches the stored admin_password2.
+        """
+        if not self.admin_password2:
+            return False
+        return check_password(raw_password, self.admin_password2)
 
 
 class Candidate(models.Model):
