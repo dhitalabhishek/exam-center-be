@@ -18,44 +18,6 @@
   <div class="module">
     <h1 style="margin-bottom: 20px;">Upload Document for {{ session }}</h1>
 
-    <div style="margin-bottom: 30px;">
-      <h2 style="margin-bottom: 10px;">📄 Document Format Guidelines</h2>
-      <p style="margin-bottom: 10px;">Please ensure your document follows this format:</p>
-      <div style="background-color: #f9f9f9; padding: 16px; border: 1px solid #ccc; border-radius: 6px;">
-        <div style="margin-bottom: 20px;">
-          <h4 style="margin: 0 0 8px 0;">Question 1&#41;</h4>
-          <p style="margin: 0 0 8px 0;">Which of the following is the primary purpose of a centrifuge in a laboratory setting?</p>
-          <ul style="list-style-type: none; padding-left: 0;">
-            <li>A) To measure the pH of a solution</li>
-            <li>
-              B) <strong>To separate components of a mixture based on density</strong> 
-            </li>
-            <li>C) To sterilize laboratory equipment</li>
-            <li>D) To amplify DNA sequences</li>
-          </ul>
-          <p>
-            <strong>Answer:</strong> To separate components of a mixture based on density
-          </p>
-        </div>
-
-        <div>
-          <h4 style="margin: 0 0 8px 0;">Question 2&#41;</h4>
-          <p style="margin: 0 0 8px 0;">What is the most appropriate action to take if a chemical spill occurs in the laboratory?</p>
-          <ul style="list-style-type: none; padding-left: 0;">
-            <li>A) Ignore it and continue working</li>
-            <li>B) Neutralize the spill with water immediately</li>
-            <li>
-              C) <strong>Follow the laboratory's spill response protocol and use appropriate PPE</strong> 
-            </li>
-            <li>D) Open all windows to ventilate the area</li>
-          </ul>
-          <p>
-            <strong>Answer:</strong> Follow the laboratory's spill response protocol and use appropriate PPE
-          </p>
-        </div>
-      </div>
-    </div>
-
     <form method="post" enctype="multipart/form-data" class="aligned">
       {% csrf_token %}
 

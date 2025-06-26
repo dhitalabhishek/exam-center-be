@@ -24,35 +24,30 @@
       padding-bottom: 10px;
     }
     
-    h2 {
-      font-size: 18px;
-      margin-top: 30px;
-      margin-bottom: 10px;
-      color: #333;
+    .question-block {
+      border-bottom: 1px solid #eee;
+      padding: 15px 0;
+      margin-bottom: 15px;
     }
     
-    textarea {
+    .question-input,
+    .option-input,
+    .correct-answer {
       width: 100%;
-      min-height: 150px;
-      font-family: monospace;
+      padding: 8px;
+      margin-top: 4px;
+      margin-bottom: 10px;
       font-size: 14px;
-      padding: 10px;
       border: 1px solid #ccc;
       border-radius: 4px;
-      background: #fafafa;
+      box-sizing: border-box;
+    }
+    
+    label {
+      font-weight: bold;
+      margin-top: 15px;
+      display: block;
       color: #333;
-      overflow: hidden;
-      resize: none;
-    }
-    
-    .valid {
-      color: green;
-      font-weight: bold;
-    }
-    
-    .invalid {
-      color: red;
-      font-weight: bold;
     }
     
     .btn {
@@ -72,6 +67,15 @@
       background-color: #0056b3;
     }
     
+    .btn-secondary {
+      background-color: #6c757d;
+      margin-right: 10px;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #545b62;
+    }
+    
     .back-link {
       margin-left: 15px;
       font-size: 13px;
@@ -83,68 +87,43 @@
       font-size: 14px;
       color: #555;
       margin-bottom: 10px;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    
+    .question-counter {
+      background-color: #e9ecef;
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: bold;
     }
   </style>
+
   <script>
-    function autoResize(el) {
-      el.style.height = 'auto'
-      el.style.height = el.scrollHeight + 'px'
-    }
+    function downloadCSV() {
+      const rows = []
+      const questionBlocks = document.querySelectorAll('.question-block')
     
-    window.addEventListener('load', function () {
-      const textarea = document.querySelector('textarea')
-      if (textarea) {
-        autoResize(textarea)
-        textarea.addEventListener('input', () => autoResize(textarea))
-      }
-    })
+      rows.push(['QUESTION', 'OPTIONS_A', 'OPTIONS_B', 'OPTIONS_C', 'OPTIONS_D', 'ANSWER'])
     
-    window.addEventListener('DOMContentLoaded', function () {
-      const form = document.querySelector('form')
-      const responseBox = document.getElementById('response-message')
+      questionBlocks.forEach((block) => {
+        const question = block.querySelector('.question-input')?.value || ''
+        const options = Array.from(block.querySelectorAll('.option-input')).map((o) => o.value || '')
+        const correct = block.querySelector('.correct-answer')?.value.toLowerCase() || ''
     
-      if (form && responseBox) {
-        form.addEventListener('submit', async function (e) {
-          e.preventDefault()
+        const row = [question, options[0] || '', options[1] || '', options[2] || '', options[3] || '', correct]
+        rows.push(row)
+      })
     
-          const formData = new FormData(form)
-          const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]').value
-    
-          const res = await fetch(form.action, {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': csrfToken
-            },
-            body: formData
-          })
-    
-          const result = await res.json()
-          if (result.success) {
-            responseBox.innerHTML = `<div class="valid">${result.message}</div>`
-            setTimeout(() => {
-              window.location.href = result.redirect_url
-            }, 1500)
-          } else {
-            responseBox.innerHTML = `<div class="invalid">❌ ${result.error || 'Something went wrong'}</div>`
-          }
-        })
-      }
-    })
-    
-    function downloadTextarea() {
-      const textarea = document.querySelector('textarea')
-      if (!textarea) return
-    
-      const content = textarea.value
-      const blob = new Blob([content], { type: 'text/plain' })
-      const url = URL.createObjectURL(blob)
-    
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'questions.txt'
-      a.click()
-    
-      URL.revokeObjectURL(url)
+      const csvContent = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'questions_{{ session.id }}.csv'
+      link.click()
+      URL.revokeObjectURL(link.href)
     }
   </script>
 {% endblock %}
@@ -154,26 +133,47 @@
     <h1>Import Questions – {{ session }}</h1>
 
     <div class="meta">
-      <strong>Document:</strong> {{ document_name }}
+      <strong>CSV File:</strong> {{ document_name }}<br />
+      <strong>Session:</strong> {{ session }}<br />
+      <strong>Questions Found:</strong> {{ questions|length }}
     </div>
-    <div class="meta">
-      <strong>Session:</strong> {{ session }}
-    </div>
-    <button type="button" class="btn" onclick="downloadTextarea()">⬇️ Download as Plain Text</button>
 
-    <h2>**Please Make Sure Every Question is Valid before submission</h2>
+    <button type="button" class="btn btn-secondary" onclick="downloadCSV()">⬇️ Download as CSV</button>
+
     <form method="post" action="{% url 'admin:appExam_question_parse' %}">
       {% csrf_token %}
-      <textarea name="document_content">{{ document_content }}</textarea>
 
-      <h2>Validation Results</h2>
-      {% if validation_result.is_valid %}
-        <div class="valid">The document format is valid.</div>
-      {% else %}
-        <div class="invalid">⚠️ {{ validation_result.message }}</div>
+      {% for q in questions %}
+        <div class="question-block">
+          <label><span class="question-counter">Question {{ forloop.counter }}</span></label>
+          <input type="text" class="question-input" name="question_{{ forloop.counter }}" value="{{ q.question|escape }}" />
+
+          {% for opt in q.answers %}
+            <label>Option {{ opt.option_letter }}</label>
+            <input type="text" class="option-input" name="option_{{ forloop.counter }}_{{ opt.option_letter|lower }}" value="{{ opt.text|escape }}" />
+          {% endfor %}
+
+          <label>Correct Option Letter (A, B, C, or D)</label>
+          <input type="text"
+            class="correct-answer"
+            name="correct_{{ forloop.counter }}"
+            value="{% spaceless %}{% for opt in q.answers %}
+            {% if opt.is_correct %}{{ opt.option_letter|cut:' ' }}{% endif %}
+            {% endfor %}{% endspaceless %}"
+            maxlength="1"
+            style="text-transform: uppercase;" />
+        </div>
+      {% empty %}
+        <div class="question-block">
+          <p style="color: #dc3545; font-weight: bold;">No valid questions found in the CSV file.</p>
+          <p>Please check that your CSV has the correct format with columns: QUESTION, OPTIONS_A, OPTIONS_B, OPTIONS_C, OPTIONS_D, ANSWER</p>
+        </div>
+      {% endfor %}
+
+      {% if questions %}
+        <button type="submit" class="btn">Save {{ questions|length }} Question{{ questions|length|pluralize }}</button>
       {% endif %}
 
-      <button type="submit" class="btn">✅ Parse & Save Questions</button>
       <a href="{% url 'admin:appExam_question_import' %}" class="back-link">← Back to Session List</a>
     </form>
   </div>

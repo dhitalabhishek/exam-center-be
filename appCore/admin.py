@@ -5,6 +5,7 @@ from django.urls import path
 from django.utils.html import format_html
 
 from .models import AdminNotification
+from .models import APILog
 from .models import CeleryTask
 from .views import task_last_updated
 
@@ -126,3 +127,10 @@ class AdminNotificationAdmin(admin.ModelAdmin):
             messages.SUCCESS,
         )
         return redirect("..")
+
+
+@admin.register(APILog)
+class APILogAdmin(admin.ModelAdmin):
+    list_display = ("timestamp", "user", "path", "method", "status_code")
+    search_fields = ("user", "path", "request_data", "response_data")
+    list_filter = ("method", "status_code", "timestamp")

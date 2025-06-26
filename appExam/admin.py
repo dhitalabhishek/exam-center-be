@@ -1,4 +1,3 @@
-import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -429,7 +428,7 @@ class QuestionAdmin(admin.ModelAdmin):
             text = escape(ans.text)
             if ans.is_correct:
                 formatted.append(
-                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text} </a>",  # noqa: E501
+                    f"<a href='{url}' style='color: green; font-weight: bold;'>{text}</a>",
                 )
             else:
                 formatted.append(f"<a href='{url}'>{text}</a>")
@@ -464,26 +463,22 @@ class QuestionAdmin(admin.ModelAdmin):
         return super().changelist_view(request, extra_context=extra_context)
 
     def import_questions_view(self, request):
-        """View to display list of exam sessions for selection"""
         exam_sessions = ExamSession.objects.all().order_by("-base_start")
-
         context = {
             **self.admin_site.each_context(request),
             "title": "Select Exam Session",
             "exam_sessions": exam_sessions,
-            "opts": self.model._meta,  # noqa: SLF001
+            "opts": self.model._meta,
             "has_view_permission": True,
             "current_time": timezone.localtime(timezone.now()),
         }
-
         return TemplateResponse(
             request,
             "admin/appExam/question/select_session.html",
             context,
         )
 
-    def import_questions_document_view(self, request, session_id):  # noqa: C901
-        """View to upload document and parse questions"""
+    def import_questions_document_view(self, request, session_id):
         session = get_object_or_404(ExamSession, id=session_id)
 
         if request.method == "POST":
@@ -492,106 +487,60 @@ class QuestionAdmin(admin.ModelAdmin):
                 document = request.FILES["document"]
                 file_extension = Path(document.name).suffix.lower()
 
-                # Store document info in session
-                request.session["document_name"] = document.name
-                request.session["session_id"] = session_id
+                if file_extension != ".csv":
+                    messages.error(request, "Only .csv files are supported.")
+                    return redirect(
+                        "admin:appExam_question_import_document",
+                        session_id=session_id,
+                    )
 
                 try:
-                    content = ""
+                    # Parse the CSV immediately and pass to template
+                    from .utils.questionParser import parse_questions_from_csv
 
-                    if file_extension == ".txt":
-                        # Handle .txt files
-                        content = document.read().decode("utf-8")
-                        request.session["document_content"] = content
+                    parsed_questions = parse_questions_from_csv(document)
 
-                    elif file_extension == ".docx":
-                        # Handle .docx files
-                        with tempfile.NamedTemporaryFile(
-                            delete=False,
-                            suffix=".docx",
-                        ) as temp_file:
-                            for chunk in document.chunks():
-                                temp_file.write(chunk)
-                            temp_file_path = temp_file.name
-
-                        try:
-                            # Parse the .docx file
-                            import docx
-
-                            doc = docx.Document(temp_file_path)
-                            content = "\n".join(
-                                [paragraph.text for paragraph in doc.paragraphs],
-                            )
-
-                            # Store the temp file path for later processing
-                            request.session["temp_file_path"] = temp_file_path
-                            request.session["document_content"] = content
-
-                        except Exception as e:
-                            if Path(temp_file_path).exists():
-                                Path(temp_file_path).unlink()
-                            raise e  # noqa: TRY201
-
-                    else:
-                        messages.error(
-                            request,
-                            "Only .txt and .docx files are supported",
-                        )
-                        return redirect(
-                            "admin:appExam_question_import_document",
-                            session_id=session_id,
-                        )
-
-                    # Validate the document format
-                    from .utils.questionParser import validate_question_format
-
-                    validation_result = validate_question_format(content)
-
-                    if not validation_result["is_valid"]:
-                        messages.warning(
-                            request,
-                            f"Document format validation: {validation_result['message']}",  # noqa: E501
-                        )
+                    # Store in session for the final save step
+                    request.session["parsed_questions"] = parsed_questions
+                    request.session["session_id"] = session_id
+                    request.session["document_name"] = document.name
 
                     context = {
                         **self.admin_site.each_context(request),
                         "title": f"Import Questions - {session}",
                         "session": session,
                         "document_name": document.name,
-                        "document_content": content,
-                        "validation_result": validation_result,
-                        "opts": self.model._meta,  # noqa: SLF001
+                        "questions": parsed_questions,  # Add parsed questions to context
+                        "opts": self.model._meta,
                         "has_view_permission": True,
                         "current_time": timezone.localtime(timezone.now()),
                     }
-
                     return TemplateResponse(
                         request,
                         "admin/appExam/question/parse_document.html",
                         context,
                     )
 
-                except Exception as e:  # noqa: BLE001
-                    messages.error(request, f"Error reading document: {e!s}")
-                    # Clean up any temp files
-                    if temp_file_path and Path(temp_file_path).exists():
-                        Path(temp_file_path).unlink()
-                        request.session.pop("temp_file_path", None)
-                        request.session.pop("temp_file_path", None)
+                except Exception as e:
+                    messages.error(request, f"Error parsing CSV: {e!s}")
+                    return redirect(
+                        "admin:appExam_question_import_document",
+                        session_id=session_id,
+                    )
+
         else:
             form = DocumentUploadForm()
 
         context = {
             **self.admin_site.each_context(request),
-            "title": f"Upload Document - {session}",
+            "title": f"Upload CSV - {session}",
             "form": form,
             "session": session,
-            "supported_formats": [".txt", ".docx"],
-            "opts": self.model._meta,  # noqa: SLF001
+            "supported_formats": [".csv"],
+            "opts": self.model._meta,
             "has_view_permission": True,
             "current_time": timezone.localtime(timezone.now()),
         }
-
         return TemplateResponse(
             request,
             "admin/appExam/question/upload_document.html",
@@ -599,33 +548,66 @@ class QuestionAdmin(admin.ModelAdmin):
         )
 
     @method_decorator(csrf_exempt)
-    def parse_questions_view(self, request):
-        """AJAX or form view to parse questions from submitted document text"""
+    def parse_questions_view(self, request):  # noqa: C901, PLR0912
         if request.method != "POST":
             return JsonResponse({"error": "Method not allowed"}, status=405)
 
         try:
             session_id = request.session.get("session_id")
-            if not session_id:
-                return JsonResponse(
-                    {"error": "Session expired or missing session ID."},
-                    status=400,
-                )
+            parsed_questions = request.session.get("parsed_questions")
+
+            if not session_id or not parsed_questions:
+                messages.error(request, "Session expired or missing data.")
+                return redirect("admin:appExam_question_import")
 
             session = get_object_or_404(ExamSession, id=session_id)
 
-            #  Get edited content from textarea
-            document_content = request.POST.get("document_content", "").strip()
-            if not document_content:
-                return JsonResponse({"error": "Document content is empty."}, status=400)
+            updated_questions = []
 
-            #  Parse questions from content
-            from .utils.questionParser import parse_questions_from_document
+            # Collect all actual question numbers from POST data
+            question_numbers = set()
+            for key in request.POST.keys():
+                if key.startswith("question_"):
+                    try:
+                        question_numbers.add(int(key.split("_")[1]))
+                    except ValueError:
+                        continue
 
-            parsed_data = parse_questions_from_document(document_content)
+            question_numbers = sorted(question_numbers)
+
+            for question_num in question_numbers:
+                question_text = request.POST.get(f"question_{question_num}", "").strip()
+                if not question_text:
+                    continue
+
+                correct_letter = (
+                    request.POST.get(f"correct_{question_num}", "").strip().lower()
+                )
+                answers = []
+
+                for letter in ["a", "b", "c", "d"]:
+                    option_text = request.POST.get(
+                        f"option_{question_num}_{letter}", ""
+                    ).strip()
+                    if option_text:
+                        answers.append(
+                            {
+                                "text": option_text,
+                                "option_letter": letter.upper(),
+                                "is_correct": (letter == correct_letter),
+                            }
+                        )
+
+                if answers:
+                    updated_questions.append(
+                        {
+                            "question": question_text,
+                            "answers": answers,
+                        }
+                    )
 
             created_count = 0
-            for question_data in parsed_data:
+            for question_data in updated_questions:
                 question = Question.objects.create(
                     text=question_data["question"],
                     session=session,
@@ -638,22 +620,19 @@ class QuestionAdmin(admin.ModelAdmin):
                     )
                 created_count += 1
 
-            #  Optionally clear session
-            for key in [
-                "document_content",
-                "document_name",
-                "session_id",
-                "temp_file_path",
-            ]:
+            # Clear session data
+            for key in ["parsed_questions", "session_id", "document_name"]:
                 request.session.pop(key, None)
 
-            # Redirect back to question list after success
             messages.success(
                 request,
-                f"Successfully imported {created_count} questions.",
+                f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV.",
             )
             return redirect("admin:appExam_question_changelist")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
             messages.error(request, f"Failed to import questions: {e!s}")
             return redirect("admin:appExam_question_import")
