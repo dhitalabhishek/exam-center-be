@@ -59,7 +59,7 @@ class APILog(models.Model):
         user_display = self.user if self.user else "Anonymous"
         short_request = (
             (self.request_data[:50] + "...")
-            if len(self.request_data) > 50
+            if len(self.request_data) > 50  # noqa: PLR2004
             else self.request_data
         )
         return f"{user_display} requested: {short_request}"
