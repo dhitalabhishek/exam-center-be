@@ -121,7 +121,8 @@ def resume_exam_session(session_id):
             session.resume_session()
             # Optional: resume each student
             for enrollment in session.enrollments.filter(
-                status="paused", paused_at__isnull=False,
+                status="paused",
+                paused_at__isnull=False,
             ):
                 pause_time = timezone.now() - enrollment.paused_at
                 enrollment.paused_duration += pause_time
@@ -150,3 +151,21 @@ def halt_exam_session(session_id):
         return f"Halted session {session_id}"  # noqa: TRY300
     except ExamSession.DoesNotExist:
         return f"Session {session_id} not found"
+
+
+@shared_task
+def evaluate_disconnection_pause(enrollment_id):
+    """Pause student individually if not reconnected in 10 seconds"""
+    try:
+        enrollment = StudentExamEnrollment.objects.get(id=enrollment_id)
+        if not enrollment.present and enrollment.status == "active":
+            now = timezone.now()
+            if enrollment.disconnected_at:
+                # Start individual pause
+                enrollment.individual_paused_at = now
+                enrollment.status = "paused"
+                enrollment.save()
+                return f"Enrollment {enrollment_id} individually paused"
+        return f"Enrollment {enrollment_id} already reconnected"  # noqa: TRY300
+    except StudentExamEnrollment.DoesNotExist:
+        return f"Enrollment {enrollment_id} not found"

@@ -365,8 +365,8 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "effective_time_remaining_display",
     )
     list_filter = ("session__status", "session__exam__program", DisconnectedFilter)
-    list_per_page = 10
-    actions = ["force_submit"]
+    list_per_page = 30
+    actions = ["force_submit", "grant_extra_time"]
 
     readonly_fields = (
         "candidate",
@@ -407,6 +407,16 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         self.message_user(request, f"Forcibly submitted {count} students")
 
     force_submit.short_description = "Force submit selected students"
+
+    def grant_extra_time(self, request, queryset):
+        count = 0
+        for enroll in queryset:
+            if enroll.individual_paused_duration.total_seconds() > 0:
+                enroll.grant_extra_time()
+                count += 1
+        self.message_user(request, f"Granted extra time to {count} students.")
+
+    grant_extra_time.short_description = "Grant paused time to selected students"
 
 
 @admin.register(Answer)
@@ -626,11 +636,11 @@ class QuestionAdmin(admin.ModelAdmin):
 
             messages.success(
                 request,
-                f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV.",
+                f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV.",  # noqa: E501
             )
             return redirect("admin:appExam_question_changelist")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             import traceback
 
             traceback.print_exc()

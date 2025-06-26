@@ -194,7 +194,6 @@ class HallAndStudentAssignment(models.Model):
 class Question(models.Model):
     text = models.TextField()
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
-    weightage = models.IntegerField(default=1)
 
     class Meta:
         constraints = [
@@ -253,6 +252,9 @@ class StudentExamEnrollment(models.Model):
     paused_at = models.DateTimeField(null=True, blank=True)
     paused_duration = models.DurationField(default=timedelta())
 
+    individual_paused_at = models.DateTimeField(null=True, blank=True)
+    individual_paused_duration = models.DurationField(default=timedelta())
+
     # Connection status
     present = models.BooleanField(default=False)
 
@@ -275,14 +277,18 @@ class StudentExamEnrollment(models.Model):
         base_elapsed = timezone.now() - self.session_started_at
 
         ongoing_pause = timedelta()
-        if self.status == "paused" and self.paused_at:
-            ongoing_pause = timezone.now() - self.paused_at
+        if self.status == "paused":
+            if self.paused_at:
+                ongoing_pause += timezone.now() - self.paused_at
+            if self.individual_paused_at:
+                ongoing_pause += timezone.now() - self.individual_paused_at
 
-        total_pause = self.paused_duration + ongoing_pause
+        total_pause = (
+            self.paused_duration + self.individual_paused_duration + ongoing_pause
+        )
         adjusted_elapsed = base_elapsed - total_pause
 
-        remaining = self.individual_duration - adjusted_elapsed
-        return max(remaining, timedelta(0))
+        return max(self.individual_duration - adjusted_elapsed, timedelta(0))
 
     @property
     def should_submit(self):
@@ -298,14 +304,21 @@ class StudentExamEnrollment(models.Model):
         return False
 
     def resume(self):
+        now = timezone.now()
+
+        # Resume individual pause
+        if self.individual_paused_at:
+            self.individual_paused_duration += now - self.individual_paused_at
+            self.individual_paused_at = None
+
+        # Resume session-level pause
         if self.status == "paused" and self.paused_at:
-            paused_time = timezone.now() - self.paused_at
-            self.paused_duration += paused_time
+            self.paused_duration += now - self.paused_at
             self.paused_at = None
-            self.status = "active"
-            self.save()
-            return True
-        return False
+
+        self.status = "active"
+        self.save()
+        return True
 
     def handle_connect(self):
         """Simplified: Always treat connection as start/resume"""
@@ -334,6 +347,13 @@ class StudentExamEnrollment(models.Model):
             self.save()
             return True
         return False
+
+    def grant_extra_time(self):
+        self.individual_duration += self.individual_paused_duration
+        self.individual_paused_duration = timedelta()
+        self.save()
+        return True
+
 
 
 # ======================== Student Answer Model ========================
