@@ -2,6 +2,8 @@ import os
 
 from django import forms
 
+from .models import Hall
+
 
 class DocumentUploadForm(forms.Form):
     document = forms.FileField(
@@ -30,3 +32,22 @@ class DocumentUploadForm(forms.Form):
                 raise forms.ValidationError("File size must be less than 10MB")  # noqa: EM101, TRY003
 
         return document
+
+
+
+class EnrollmentRangeForm(forms.Form):
+    def __init__(self, session_id, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["hall"] = forms.ModelChoiceField(
+            queryset=Hall.objects.all(),
+            label="Select Hall",
+            help_text="Select the hall for the students to be assigned to.",
+        )
+        self.fields["range_string"] = forms.CharField(
+            label="Symbol Number Range",
+            max_length=500,
+            widget=forms.TextInput(
+                attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"},
+            ),
+            help_text="Enter comma-separated ranges or individual symbols.",
+        )
