@@ -572,9 +572,19 @@ class QuestionAdmin(admin.ModelAdmin):
 
             session = get_object_or_404(ExamSession, id=session_id)
 
+            # DEBUG: Log all POST data
+            logger.info("=== POST DATA DEBUG ===")
+            for key, value in request.POST.items():
+                logger.info(f"POST[{key}] = {value}")
+            logger.info("=== END POST DATA ===")
+
+            # DEBUG: Log original parsed questions count
+            logger.info(f"Original parsed questions count: {len(parsed_questions)}")
+
             updated_questions = []
 
-            # Collect all actual question numbers from POST data
+            # ISSUE 1: Your original code collects question numbers from POST keys
+            # This can miss questions if any field is empty or malformed
             question_numbers = set()
             for key in request.POST.keys():
                 if key.startswith("question_"):
@@ -584,65 +594,122 @@ class QuestionAdmin(admin.ModelAdmin):
                         continue
 
             question_numbers = sorted(question_numbers)
+            logger.info(f"Question numbers found in POST: {question_numbers}")
 
-            for question_num in question_numbers:
+            # BETTER APPROACH: Use the original parsed count
+            total_expected = len(parsed_questions)
+            logger.info(
+                f"Expected questions: {total_expected}, Found in POST: {len(question_numbers)}",
+            )
+
+            for question_num in range(
+                1, total_expected + 1,
+            ):  # Use expected count instead
+                logger.info(f"\n--- Processing Question {question_num} ---")
+
                 question_text = request.POST.get(f"question_{question_num}", "").strip()
+                logger.info(f"Question text length: {len(question_text)}")
+
+                # ISSUE 2: This skips questions with empty text
                 if not question_text:
-                    continue
+                    logger.warning(
+                        f"Question {question_num}: Empty question text - SKIPPING",
+                    )
+                    continue  # This is likely causing your issue!
 
                 correct_letter = (
                     request.POST.get(f"correct_{question_num}", "").strip().lower()
                 )
-                answers = []
+                logger.info(f"Correct letter: '{correct_letter}'")
 
+                answers = []
                 for letter in ["a", "b", "c", "d"]:
                     option_text = request.POST.get(
-                        f"option_{question_num}_{letter}", ""
+                        f"option_{question_num}_{letter}", "",
                     ).strip()
-                    if option_text:
+                    logger.info(
+                        f"Option {letter}: '{option_text}' (length: {len(option_text)})",
+                    )
+
+                    # ISSUE 3: This only adds non-empty options
+                    if (
+                        option_text
+                    ):  # This might skip empty options that should be preserved
                         answers.append(
                             {
                                 "text": option_text,
                                 "option_letter": letter.upper(),
                                 "is_correct": (letter == correct_letter),
-                            }
+                            },
                         )
 
-                if answers:
+                logger.info(f"Question {question_num}: Created {len(answers)} answers")
+
+                # ISSUE 4: This skips questions without answers
+                if answers:  # This could skip questions with all empty options
                     updated_questions.append(
                         {
                             "question": question_text,
                             "answers": answers,
-                        }
+                        },
                     )
+                    logger.info(f"Question {question_num}: ADDED to updated_questions")
+                else:
+                    logger.warning(f"Question {question_num}: No answers - SKIPPING")
 
+            logger.info(f"\nFinal updated_questions count: {len(updated_questions)}")
+
+            # ISSUE 5: Database creation might fail silently
             created_count = 0
-            for question_data in updated_questions:
-                question = Question.objects.create(
-                    text=question_data["question"],
-                    session=session,
-                )
-                for answer_data in question_data["answers"]:
-                    Answer.objects.create(
-                        question=question,
-                        text=answer_data["text"],
-                        is_correct=answer_data["is_correct"],
+            for idx, question_data in enumerate(updated_questions, 1):
+                try:
+                    logger.info(f"Creating question {idx} in database...")
+                    question = Question.objects.create(
+                        text=question_data["question"],
+                        session=session,
                     )
-                created_count += 1
+                    logger.info(f"Question {idx} created with ID: {question.id}")
+
+                    answer_count = 0
+                    for answer_data in question_data["answers"]:
+                        try:
+                            Answer.objects.create(
+                                question=question,
+                                text=answer_data["text"],
+                                is_correct=answer_data["is_correct"],
+                            )
+                            answer_count += 1
+                            logger.info(
+                                f"Answer created: {answer_data['text'][:50]}...",
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to create answer: {e!s}")
+
+                    logger.info(f"Question {idx}: Created with {answer_count} answers")
+                    created_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to create question {idx}: {e!s}")
+                    import traceback
+
+                    logger.error(traceback.format_exc())
 
             # Clear session data
             for key in ["parsed_questions", "session_id", "document_name"]:
                 request.session.pop(key, None)
 
+            logger.info(f"=== FINAL RESULT: Created {created_count} questions ===")
+
             messages.success(
                 request,
-                f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV.",  # noqa: E501
+                f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV.",
             )
             return redirect("admin:appExam_question_changelist")
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             import traceback
 
-            traceback.print_exc()
+            logger.error(f"Error in parse_questions_view: {e!s}")
+            logger.error(traceback.format_exc())
             messages.error(request, f"Failed to import questions: {e!s}")
             return redirect("admin:appExam_question_import")

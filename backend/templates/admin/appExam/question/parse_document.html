@@ -149,8 +149,13 @@
           <input type="text" class="question-input" name="question_{{ forloop.counter }}" value="{{ q.question|escape }}" />
 
           {% for opt in q.answers %}
-            <label>Option {{ opt.option_letter }}</label>
-            <input type="text" class="option-input" name="option_{{ forloop.counter }}_{{ opt.option_letter|lower }}" value="{{ opt.text|escape }}" />
+          <label>Option {{ opt.option_letter }}</label>
+          <input 
+              type="text"
+              class="option-input"
+              name="option_{{ forloop.parentloop.counter }}_{{ opt.option_letter|lower }}"
+              value="{{ opt.text|escape }}"
+          />
           {% endfor %}
 
           <label>Correct Option Letter (A, B, C, or D)</label>

@@ -13,8 +13,6 @@ from django.db import transaction
 
 from appAuthentication.models import Candidate
 from appCore.models import CeleryTask
-
-# Add these imports
 from appCore.utils.track_task import track_task
 from appInstitutions.models import Institute
 
@@ -53,7 +51,6 @@ def process_candidates_file(self, file_path, institute_id):
             if total_rows == 0:
                 task.message = "File is empty - no candidates to process"
                 task.status = CeleryTask.get_status_value("FAILURE")
-
                 task.save()
                 return {"status": "error", "message": "File is empty"}
 
@@ -74,6 +71,16 @@ def process_candidates_file(self, file_path, institute_id):
             for index, row in enumerate(rows):
                 try:
                     data = clean_row_data(row)
+
+                    # Process initial_image path from Profile Pictures column
+                    initial_image = data.get("initial_image", "").strip()
+                    if initial_image:
+                        # Construct full path: institute.name/candidatePhotos/filename
+                        data["initial_image"] = (
+                            f"{institute.name}/candidatePhotos/{initial_image}"
+                        )
+                    else:
+                        data["initial_image"] = None
 
                     symbol = data["symbol_number"]
                     email = data["email"]
@@ -154,18 +161,17 @@ def process_candidates_file(self, file_path, institute_id):
             }
 
             task.result = str(result_data)
-
             task.progress = 100
             task.save()
 
-            return result_data  # noqa: TRY300
+            return result_data
 
         except Exception as e:
             logger.exception(f"Task failed: {e!s}")
             task.message = f"Task failed: {e!s}"
             task.status = CeleryTask.get_status_value("FAILURE")
             task.save()
-            raise self.retry(countdown=60, max_retries=3, exc=e)  # noqa: B904
+            raise self.retry(countdown=60, max_retries=3, exc=e)
 
 
 # Keep the old function for backward compatibility
@@ -246,6 +252,8 @@ def clean_row_data(row):
         "level": safe_str(row.get("Level")),
         "program_id": safe_int(row.get("Program ID")),
         "program": safe_str(row.get("Program")),
+        # New field: Profile Pictures mapped to initial_image
+        "initial_image": safe_str(row.get("Profile Picture")),
     }
 
 
@@ -271,7 +279,7 @@ def process_batch(users_batch, candidates_batch):
         return len(created_users)
 
     except Exception as e:
-        logger.error(f"Batch processing failed: {e!s}")
+        logger.error(f"Batch processing failed: {e!s}")  # noqa: TRY400
         raise
 
 
@@ -296,6 +304,8 @@ def validate_file_format(file_path):
         "Level",
         "Program ID",
         "Program",
+        # New required column
+        "Profile Picture",
     ]
 
     try:
@@ -335,7 +345,7 @@ def validate_file_format(file_path):
             "file_type": file_extension,
         }
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return {
             "is_valid": False,
             "error": f"Error reading file: {e!s}",

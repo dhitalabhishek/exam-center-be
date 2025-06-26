@@ -176,10 +176,12 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
         "phone": candidate.phone,
         "symbol_number": candidate.symbol_number,
         "date_of_birth": candidate.dob_nep,
+        "institute": {
+            "name": candidate.institute.name,
+            "image": get_image_url(candidate.institute.logo),
+        },
         "photo": get_image_url("candidate.initial_image"),
-        "biometric_image": get_image_url("candidate.biometric_image"),
-        "right_thumb_image": get_image_url("candidate.right_thumb_image"),
-        "left_thumb_image": get_image_url("candidate.left_thumb_image"),
+        "biometric_image": get_image_url("candidate.profile_image"),
         # "seat_number": seat_number,``
         "start_time": start_time,
         "duration": duration,
