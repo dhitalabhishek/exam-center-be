@@ -117,9 +117,10 @@ class CandidateAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    def import_candidates(self, request):
+    def import_candidates(self, request):  # noqa: C901, PLR0911
         """
         Import candidates from CSV or Excel files
+        Supports both format1 (original) and format2 (new simplified format)
         """
         # Get institute_id from GET parameters
         institute_id = request.GET.get("institute_id")
@@ -135,8 +136,12 @@ class CandidateAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             uploaded_file = request.FILES.get("candidate_file")
-            # Get institute_id from POST data
+            # Get institute_id and format from POST data
             institute_id = request.POST.get("institute_id")
+            file_format = request.POST.get(
+                "file_format",
+                "auto",
+            )  # auto, format1, or format2
 
             # Validation
             if not uploaded_file:
@@ -166,7 +171,8 @@ class CandidateAdmin(admin.ModelAdmin):
                 )
 
                 # Validate file format before processing
-                validation_result = validate_file_format(file_path)
+                expected_format = None if file_format == "auto" else file_format
+                validation_result = validate_file_format(file_path, expected_format)
 
                 if not validation_result["is_valid"]:
                     # Clean up the uploaded file
@@ -177,19 +183,27 @@ class CandidateAdmin(admin.ModelAdmin):
                     )
                     return redirect(request.get_full_path())
 
-                # Start the Celery task with the new function
-                task = process_candidates_file.delay(file_path, institute_id)
+                # Use detected format if auto-detection was used
+                final_format = validation_result.get("detected_format", "format1")
+
+                # Start the Celery task with the detected/selected format
+                task = process_candidates_file.delay(
+                    file_path,
+                    institute_id,
+                    final_format,
+                )
 
                 messages.success(
                     request,
                     f"File upload started! Task ID: {task.id}. "
-                    f"Processing {validation_result['total_rows']} rows from {validation_result['file_type']} file. "
+                    f"Processing {validation_result['total_rows']} rows from {validation_result['file_type']} file "  # noqa: E501
+                    f"using {final_format}. "
                     "Processing will happen in the background. "
                     "You'll be notified when it's complete.",
                 )
                 return redirect("admin:appAuthentication_candidate_changelist")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Clean up file if it was saved
                 if "file_path" in locals():
                     try:  # noqa: SIM105

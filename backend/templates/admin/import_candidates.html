@@ -14,10 +14,8 @@
   <div id="content-main">
     <div class="module aligned">
       <h2>{{ title }}</h2>
-
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-
         <div class="form-row">
           <div>
             <label>Selected Institute:</label>
@@ -41,6 +39,18 @@
 
         <div class="form-row">
           <div>
+            <label for="file_format">File Format:</label>
+            <select name="file_format" id="file_format" required>
+              <option value="auto">Auto-detect format</option>
+              <option value="format1">Format 1 (Original - Full Details)</option>
+              <option value="format2">Format 2 (Simplified - Name, Email, Mobile, etc.)</option>
+            </select>
+            <p class="help">Choose the format of your file or let the system auto-detect it</p>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
             <label for="csv_file">Select CSV or Excel File:</label>
             <input type="file" name="candidate_file" accept=".csv,.xlsx,.xls" required />
           </div>
@@ -51,88 +61,166 @@
             <p class="help">
               <strong>File Format Requirements:</strong>
             </p>
-            <table style="border-collapse: collapse; width: 100%; ">
-              <thead>
-                <tr style="background-color: #f2f2f2;">
-                  <th style="border: 1px solid #ccc; padding: 8px;">Column Order</th>
-                  <th style="border: 1px solid #ccc; padding: 8px;">Field Name</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">1</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">S.N</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">2</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Admit Card ID</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">3</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Profile ID</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">4</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Symbol Number</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">5</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Exam Processing Id</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">6</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Gender</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">7</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Citizenship No.</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">8</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Firstname</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">9</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Middlename</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">10</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Lastname</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">11</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">DOB (nep)</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">12</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Profile Picture</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">13</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Email</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">14</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Phone</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">15</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Level ID</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">16</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Level</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">17</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Program ID</td>
-                </tr>
-                <tr>
-                  <td style="border: 1px solid #ccc; padding: 8px;">18</td>
-                  <td style="border: 1px solid #ccc; padding: 8px;">Program</td>
-                </tr>
-              </tbody>
-            </table>
+
+            <!-- Format 1 Table -->
+            <div id="format1-table" class="format-table">
+              <h4>Format 1 (Original - Full Details):</h4>
+              <table style="border-collapse: collapse; width: 100%; margin-bottom: 20px;">
+                <thead>
+                  <tr style="background-color: #f2f2f2;">
+                    <th style="border: 1px solid #ccc; padding: 8px;">Column Order</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Field Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">1</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">S.N</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">2</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Admit Card ID</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">3</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Profile ID</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">4</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Symbol Number</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">5</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Exam Processing Id</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">6</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Gender</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">7</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Citizenship No.</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">8</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Firstname</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">9</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Middlename</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">10</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Lastname</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">11</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">DOB (nep)</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">12</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Profile Picture</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">13</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Email</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">14</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Phone</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">15</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Level ID</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">16</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Level</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">17</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Program ID</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">18</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Program</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Format 2 Table -->
+            <div id="format2-table" class="format-table">
+              <h4>Format 2 (Simplified):</h4>
+              <table style="border-collapse: collapse; width: 100%; margin-bottom: 20px;">
+                <thead>
+                  <tr style="background-color: #e8f5e8;">
+                    <th style="border: 1px solid #ccc; padding: 8px;">Column Order</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Field Name</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Required</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">1</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Name</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">✓</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">2</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Mobile</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">✓</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">3</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Email</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">✓</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">4</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Symbol Number</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">✓</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">5</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Level</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">✓</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">6</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Program</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Optional*</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">7</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Exam Time</td>
+                    <td style="border: 1px solid #ccc; padding: 8px;">Optional</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style="font-style: italic; color: #666;">* If Program is empty, the Level value will be used as the Program name, and Program ID will default to 1.</p>
+            </div>
+
+            <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #007cba; margin-top: 20px;">
+              <h4>Important Notes:</h4>
+              <ul>
+                <li>
+                  <strong>Auto-detect:</strong> The system will automatically detect which format your file uses based on the column headers.
+                </li>
+                <li>
+                  <strong>Format 1:</strong> Complete candidate information including admit card ID, profile details, etc.
+                </li>
+                <li>
+                  <strong>Format 2:</strong> Simplified format with just essential information (Name, Email, Mobile, Symbol Number, Level).
+                </li>
+                <li>
+                  <strong>Program Field:</strong> In Format 2, if the Program column is empty or missing, the Level value will be used as the Program name.
+                </li>
+                <li>
+                  <strong>Default Values:</strong> Format 2 uses default values for missing fields (Program ID = 1, Admit Card ID = 0, etc.).
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 
@@ -143,4 +231,34 @@
       </form>
     </div>
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const formatSelect = document.getElementById('file_format')
+      const format1Table = document.getElementById('format1-table')
+      const format2Table = document.getElementById('format2-table')
+    
+      function toggleTables() {
+        const selectedFormat = formatSelect.value
+    
+        if (selectedFormat === 'format1') {
+          format1Table.style.display = 'block'
+          format2Table.style.display = 'none'
+        } else if (selectedFormat === 'format2') {
+          format1Table.style.display = 'none'
+          format2Table.style.display = 'block'
+        } else {
+          // Auto-detect - show both tables
+          format1Table.style.display = 'block'
+          format2Table.style.display = 'block'
+        }
+      }
+    
+      // Initial setup
+      toggleTables()
+    
+      // Listen for changes
+      formatSelect.addEventListener('change', toggleTables)
+    })
+  </script>
 {% endblock %}
