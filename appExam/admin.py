@@ -21,14 +21,18 @@ from .models import Exam
 from .models import ExamSession
 from .models import Hall
 from .models import Question
+from .models import SeatAssignment
 from .models import StudentAnswer
 from .models import StudentExamEnrollment
 from .question_admin_view import import_questions_document_view
 from .question_admin_view import import_questions_view
 from .question_admin_view import parse_questions_view
+from .utils.export_student_details_pdf import download_exam_pdf_view
 
 admin.site.register(StudentAnswer)
 
+
+admin.site.register(SeatAssignment)
 
 @admin.register(Hall)
 class HallAdmin(admin.ModelAdmin):
@@ -160,6 +164,11 @@ class ExamSessionAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "<int:session_id>/download-enrollments-pdf/",
+                self.admin_site.admin_view(download_exam_pdf_view),
+                name="exam_session_download_pdf",
+            ),
+            path(
                 "<int:session_id>/enroll-students/",
                 self.admin_site.admin_view(enroll_students_view),
                 name="enroll_students",
@@ -183,14 +192,17 @@ class ExamSessionAdmin(admin.ModelAdmin):
 
         enroll_url = reverse("admin:enroll_students", args=[obj.pk])
         import_url = reverse("admin:appExam_question_import_document", args=[obj.pk])
+        pdf_url = reverse("admin:exam_session_download_pdf", args=[obj.pk])
 
         return format_html(
             """
             <a href="{}" class="btn btn-sm btn-outline-primary" style="margin-right: 5px;">📝 Enroll</a>
             <a href="{}" class="btn btn-sm btn-outline-success">📥 Import</a>
+            <a href="{}" class="btn btn-sm btn-outline-info">📄 Export PDF</a>
             """,  # noqa: E501
             enroll_url,
             import_url,
+            pdf_url,
         )
 
     actions_column.short_description = "Actions"

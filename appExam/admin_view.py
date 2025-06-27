@@ -1,6 +1,9 @@
+from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import redirect
+from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .forms import EnrollmentRangeForm
@@ -28,7 +31,7 @@ def enroll_students_view(request, session_id):
 
             if range_string == "*":
                 # Create dummy hall assignment with first hall, used only for task linkage
-                from appInstitutions.models import Hall
+                from appExam.models import Hall
 
                 first_hall = hall or Hall.objects.first()
 
@@ -65,4 +68,19 @@ def enroll_students_view(request, session_id):
                 f"Task ID: {task.id}. Check the results in a few seconds.",
             )
 
-    return redirect("admin:appExam_examsession_change", session.id)
+            return redirect("admin:appExam_examsession_change", session.id)
+
+    else:
+        form = EnrollmentRangeForm(session_id)
+
+    context = {
+        **admin.site.each_context(request),
+        "form": form,
+        "session": session,
+        "title": f"Enroll Students for {session}",
+        "opts": ExamSession._meta,  # noqa: SLF001
+        "has_change_permission": True,
+        "current_time": timezone.localtime(timezone.now()),
+    }
+
+    return render(request, "admin/enroll_students.html", context)

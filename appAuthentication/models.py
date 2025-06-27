@@ -140,3 +140,9 @@ class Candidate(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.symbol_number})"
+
+    def delete(self, *args, **kwargs):
+        # delete linked user first
+        if self.user:
+            self.user.delete()
+        super().delete(*args, **kwargs)

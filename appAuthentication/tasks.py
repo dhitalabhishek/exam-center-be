@@ -137,12 +137,16 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                         data["initial_image"] = None
 
                     symbol = data["symbol_number"]
-                    email = data["email"].lower().strip()
+                    email = data["email"].lower()
+
+                    email = email.strip().replace(" ", "")
 
                     # Basic validation
                     if not email or "@" not in email:
-                        all_errors.append(f"Row {index + 1}: Invalid email format")
-                        continue
+                        email += "@wrongmail.com"
+                        all_errors.append(
+                            f"Row {index + 1}: Invalid email format. Assigned default domain."
+                        )
 
                     random_password = "".join(
                         random.choices(string.ascii_letters + string.digits, k=8),

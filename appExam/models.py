@@ -365,14 +365,27 @@ class SeatAssignment(models.Model):
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
     hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
     seat_number = models.PositiveIntegerField()
+    session_base_start = models.DateTimeField(null=True)  # for optional DB constraint
 
     class Meta:
         indexes = [
             models.Index(fields=["hall", "seat_number"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["hall", "seat_number", "session_base_start"],
+                name="unique_seat_per_time",
+            ),
+        ]
 
-    def __str__(self):
-        return f"{self.enrollment.candidate.symbol_number} - Hall: {self.hall.name}, Seat: {self.seat_number}"  # noqa: E501
+    def save(self, *args, **kwargs):
+        if not self.session_base_start:
+            self.session_base_start = self.session.base_start
+        super().save(*args, **kwargs)
+
+    def __str__(self):  # noqa: DJ012
+        return f"{self.enrollment.candidate.symbol_number} - {self.hall.name}-{self.seat_number}"  # noqa: E501
+
 
 
 # ======================== Student Answer Model ========================

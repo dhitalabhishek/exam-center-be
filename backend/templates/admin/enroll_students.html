@@ -26,6 +26,26 @@
       </div>
 
       <div class="card-body">
+        <!-- Total Progress Bar -->
+        {% if session.hall_assignments.all %}
+          {% with total_enrolled=0 total_capacity=0 %}
+            {% for assignment in session.hall_assignments.all %}
+              {% with enrolled=assignment.studentexamenrollment_set.count capacity=assignment.hall.capacity %}
+                {% with total_enrolled=total_enrolled|add:enrolled total_capacity=total_capacity|add:capacity %}
+
+                {% endwith %}
+              {% endwith %}
+            {% endfor %}
+            {% widthratio total_enrolled total_capacity 100 as progress_percent %}
+            <div class="alert alert-info">
+              <h5 class="mb-2"><i class="fas fa-chart-line"></i> Total Progress</h5>
+              <div class="progress" style="height: 20px;">
+                <div class="progress-bar bg-success" role="progressbar" style="width: {{ progress_percent }}%">{{ progress_percent }}% ({{ total_enrolled }}/{{ total_capacity }})</div>
+              </div>
+            </div>
+          {% endwith %}
+        {% endif %}
+
         <!-- Session Details Card -->
         <div class="card card-info">
           <div class="card-header">
@@ -46,33 +66,18 @@
               <dd class="col-sm-9">{{ session.exam.subject.name|default:'All Subjects' }}</dd>
 
               <dt class="col-sm-3">Start Time:</dt>
-              <dd class="col-sm-9">{{ session.start_time }}</dd>
+              <dd class="col-sm-9">{{ session.base_start }}</dd>
 
               <dt class="col-sm-3">Status:</dt>
               <dd class="col-sm-9">
                 <span class="badge badge-{% if session.status == 'scheduled' %}
-                    
-                    
-                    
                     info
 
-
-
                   {% elif session.status == 'completed' %}
-                    
-                    
-                    
                     success
 
-
-
                   {% else %}
-                    
-                    
-                    
                     warning
-
-
 
                   {% endif %}">
                   {{ session.get_status_display }}
@@ -289,20 +294,10 @@
                         </td>
                         <td class="text-center">
                           <span class="badge badge-pill bg-{% if assignment.studentexamenrollment_set.count == 0 %}
-                              
-                              
-                              
                               secondary
 
-
-
                             {% else %}
-                              
-                              
-                              
                               primary
-
-
 
                             {% endif %}"
                             style="font-size: 1.1em;">
@@ -310,20 +305,10 @@
                           </span>
                           <div class="progress mt-1" style="height: 5px;">
                             <div class="progress-bar bg-{% if assignment.studentexamenrollment_set.count == 0 %}
-                                
-                                
-                                
                                 secondary
 
-
-
                               {% else %}
-                                
-                                
-                                
                                 info
-
-
 
                               {% endif %}"
                               role="progressbar"
@@ -346,7 +331,6 @@
 
 {% block extrajs %}
   <script>
-    // Add modern input styling
     document.addEventListener('DOMContentLoaded', function () {
       // Add form-control classes to inputs
       const hallSelect = document.getElementById('id_hall')
@@ -415,6 +399,12 @@
     .badge-pill {
       min-width: 40px;
       padding: 0.5em 0.75em;
+    }
+    
+    /* Progress bar styling */
+    .progress {
+      max-width: 100%;
+      margin-bottom: 1rem;
     }
   </style>
 {% endblock %}
