@@ -155,9 +155,9 @@ class ExamSession(models.Model):
             # Handle disconnected students
             disconnected = self.enrollments.filter(present=False, status="active")
             for enrollment in disconnected:
-                from .tasks import submit_when_time_expires
+                from appCore.tasks import submit_student_exam
 
-                submit_when_time_expires.apply_async(
+                submit_student_exam.apply_async(
                     (enrollment.id,),
                     countdown=enrollment.effective_time_remaining.total_seconds(),
                 )
@@ -266,6 +266,12 @@ class StudentExamEnrollment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "session"]),
+            models.Index(fields=["session_started_at", "status"]),
+        ]
+
     def __str__(self):
         return f"{self.candidate.symbol_number} - {self.session}"
 
@@ -293,6 +299,8 @@ class StudentExamEnrollment(models.Model):
     @property
     def should_submit(self):
         """Check if time has expired"""
+        if self.status == "submitted":
+            return False
         return self.effective_time_remaining <= timedelta(0)
 
     def pause(self):
@@ -341,7 +349,7 @@ class StudentExamEnrollment(models.Model):
 
     def submit_exam(self):
         """Finalize exam submission"""
-        if self.status == "active":
+        if self.status != "submitted":
             self.status = "submitted"
             self.present = False
             self.save()
@@ -385,7 +393,6 @@ class SeatAssignment(models.Model):
 
     def __str__(self):  # noqa: DJ012
         return f"{self.enrollment.candidate.symbol_number} - {self.hall.name}-{self.seat_number}"  # noqa: E501
-
 
 
 # ======================== Student Answer Model ========================

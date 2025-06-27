@@ -27,12 +27,15 @@ from .models import StudentExamEnrollment
 from .question_admin_view import import_questions_document_view
 from .question_admin_view import import_questions_view
 from .question_admin_view import parse_questions_view
-from .utils.export_student_details_pdf import download_exam_pdf_view
+
+# from .utils.export_student_details_pdf import download_exam_pdf_view  # noqa: ERA001
+from .utils.export_student_details_pdf import download_exam_excel_view
 
 admin.site.register(StudentAnswer)
 
 
 admin.site.register(SeatAssignment)
+
 
 @admin.register(Hall)
 class HallAdmin(admin.ModelAdmin):
@@ -165,7 +168,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         custom_urls = [
             path(
                 "<int:session_id>/download-enrollments-pdf/",
-                self.admin_site.admin_view(download_exam_pdf_view),
+                self.admin_site.admin_view(download_exam_excel_view),
                 name="exam_session_download_pdf",
             ),
             path(
@@ -324,15 +327,26 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "present",
         "updated_at",
         "created_at",
+        "session_started_at",
+        "paused_at",
+        "paused_duration",
+        "individual_paused_at",
+        "individual_paused_duration",
     )
+
     fields = (
         "candidate",
         "session",
         "status",
         "present",
+        "session_started_at",
+        "individual_duration",
         "connection_start",
         "disconnected_at",
-        "individual_duration",
+        "paused_at",
+        "paused_duration",
+        "individual_paused_at",
+        "individual_paused_duration",
         "question_order",
         "answer_order",
         "updated_at",

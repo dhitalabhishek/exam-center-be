@@ -99,49 +99,56 @@ CELERY_TASK_SERIALIZER = "json"
 # minio setup
 STORAGES = {
     "default": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "BACKEND": "backend.storage_backends.MinIOStorage",
     },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
 
-# MinIO configuration with working signed URLs
+# ======================== MinIO configuration ===========================================
 AWS_ACCESS_KEY_ID = os.getenv("MINIO_ROOT_USER")
 AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_ROOT_PASSWORD")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")
+
+# Internal endpoint for Django to connect to MinIO (container-to-container)
+AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")  # http://minio:9000
+
+# External domain for URL generation (what browsers can access)
+MINIO_EXTERNAL_DOMAIN = os.getenv("MINIO_EXTERNAL_DOMAIN", "10.10.0.2")
+
 AWS_S3_REGION_NAME = "us-east-1"
 AWS_S3_ADDRESSING_STYLE = "path"  # Use path-style addressing for MinIO
 
-# Additional MinIO-specific settings
-AWS_S3_USE_SSL = False  # Set to True if using HTTPS
-AWS_S3_VERIFY = False   # Disable SSL verification for local development
-AWS_QUERYSTRING_AUTH = True  # Keep this for signed URLs
-AWS_QUERYSTRING_EXPIRE = 504800
-AWS_DEFAULT_ACL = None  # Use bucket's default ACL
+# SSL and security settings
+AWS_S3_USE_SSL = False
+AWS_S3_VERIFY = False
+AWS_QUERYSTRING_AUTH = True  # Enable signed URLs
+AWS_QUERYSTRING_EXPIRE = 504800  # URL expiration time in seconds
 
-# Critical settings for MinIO compatibility
-AWS_S3_SIGNATURE_VERSION = "s3v4"  # Use signature version 4
-AWS_S3_FILE_OVERWRITE = False  # Prevent accidental overwrites
+# MinIO compatibility settings
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
 AWS_S3_URL_PROTOCOL = "http:"
+AWS_S3_SECURE_URLS = False
 
-# Force the correct URL generation
-AWS_S3_CUSTOM_DOMAIN = None
-AWS_S3_SECURE_URLS = False  # Match AWS_S3_USE_SSL setting
+# Remove custom domain to let our custom storage handle it
+# AWS_S3_CUSTOM_DOMAIN = None  # Let custom storage handle this  # noqa: ERA001
 
-# SIMPLE_JWT = {
-#     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-#     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-#     "ROTATE_REFRESH_TOKENS": False,
-#     "BLACKLIST_AFTER_ROTATION": False,
-#     "ALGORITHM": "HS256",
-#     "SIGNING_KEY": SECRET_KEY,
-#     "AUTH_HEADER_TYPES": ("Bearer",),
-#     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
-# }
+# Additional settings for better performance
+AWS_S3_OBJECT_PARAMETERS = {
+    "CacheControl": "max-age=86400",
+}
+
+# File handling settings
+AWS_LOCATION = ""  # Store files in bucket root
 
 
+
+
+
+# ===================================================================
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=365 * 100),

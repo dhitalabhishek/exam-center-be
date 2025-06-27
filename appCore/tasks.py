@@ -19,6 +19,7 @@ def exam_monitor():
     """Central task that coordinates all exam checks."""
     activate_scheduled_sessions.delay()
     complete_expired_sessions.delay()
+    submit_expired_students.delay()  # NEW: Check individual student time limits
     return "Exam monitoring tasks dispatched"
 
 
@@ -60,6 +61,32 @@ def complete_expired_sessions():
 
 
 @shared_task
+def submit_expired_students():
+    """NEW: Submit individual students whose time has expired"""
+    now = timezone.now()
+    submitted = 0
+
+    # Get all active/paused enrollments from ongoing sessions
+    enrollments = StudentExamEnrollment.objects.filter(
+        status__in=["active", "paused"], session__status__in=["ongoing", "paused"],
+    ).select_related("session")
+
+    for enrollment in enrollments:
+        try:
+            # Check if student's individual time has expired
+            if enrollment.should_submit:
+                if enrollment.submit_exam():
+                    submitted += 1
+                    logger.info(
+                        f"Auto-submitted enrollment {enrollment.id} - time expired",  # noqa: G004
+                    )
+        except Exception as e:
+            logger.error(f"Error checking enrollment {enrollment.id}: {e}")  # noqa: G004
+
+    return f"Auto-submitted {submitted} students whose time expired"
+
+
+@shared_task
 def handle_student_disconnect(enrollment_id):
     """Process student disconnection and schedule submission"""
     try:
@@ -68,13 +95,16 @@ def handle_student_disconnect(enrollment_id):
         # Just log disconnection without freezing/pause logic
         enrollment.handle_disconnect()
 
-        # Schedule submission if time expires
-        remaining = enrollment.effective_time_remaining.total_seconds()
+        # FIXED: Better handling of submission scheduling
+        remaining_seconds = enrollment.effective_time_remaining.total_seconds()
 
-        if remaining > 0:
-            submit_student_exam.apply_async((enrollment_id,), countdown=remaining)
-        else:
+        # If time already expired, submit immediately
+        if remaining_seconds <= 0:
             submit_student_exam.delay(enrollment_id)
+        else:
+            # Schedule submission with minimum 1 second countdown to avoid timing issues
+            countdown = max(1, int(remaining_seconds))
+            submit_student_exam.apply_async((enrollment_id,), countdown=countdown)
 
         return f"Handled disconnect for {enrollment_id}"  # noqa: TRY300
     except StudentExamEnrollment.DoesNotExist:
@@ -87,9 +117,13 @@ def submit_student_exam(enrollment_id):
     try:
         enrollment = StudentExamEnrollment.objects.get(id=enrollment_id)
         if enrollment.status in ["active", "paused"]:
-            enrollment.submit_exam()
-            return f"Submitted enrollment {enrollment_id}"
-        return f"Enrollment {enrollment_id} already submitted"  # noqa: TRY300
+            if enrollment.submit_exam():
+                logger.info(f"Successfully submitted enrollment {enrollment_id}")
+                return f"Submitted enrollment {enrollment_id}"
+            return f"Enrollment {enrollment_id} was already submitted"
+        return (
+            f"Enrollment {enrollment_id} not in submittable state: {enrollment.status}"
+        )
     except StudentExamEnrollment.DoesNotExist:
         return f"Enrollment {enrollment_id} not found"
 
@@ -167,5 +201,19 @@ def evaluate_disconnection_pause(enrollment_id):
                 enrollment.save()
                 return f"Enrollment {enrollment_id} individually paused"
         return f"Enrollment {enrollment_id} already reconnected"  # noqa: TRY300
+    except StudentExamEnrollment.DoesNotExist:
+        return f"Enrollment {enrollment_id} not found"
+
+
+@shared_task
+def force_submit_student(enrollment_id, reason="Manual override"):
+    """NEW: Force submit a specific student (for admin use)"""
+    try:
+        enrollment = StudentExamEnrollment.objects.get(id=enrollment_id)
+        if enrollment.status in ["active", "paused"]:
+            if enrollment.submit_exam():
+                logger.info(f"Force submitted enrollment {enrollment_id}: {reason}")
+                return f"Force submitted enrollment {enrollment_id}: {reason}"
+        return f"Enrollment {enrollment_id} already submitted"
     except StudentExamEnrollment.DoesNotExist:
         return f"Enrollment {enrollment_id} not found"

@@ -1,6 +1,8 @@
 from io import BytesIO
 
 from django.http import FileResponse
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import PageBreak
@@ -98,4 +100,79 @@ def download_exam_pdf_view(request, session_id):
         buffer,
         as_attachment=True,
         filename=f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.pdf",
+    )
+
+
+def download_exam_excel_view(request, session_id):
+    session = ExamSession.objects.get(pk=session_id)
+    enrollments = StudentExamEnrollment.objects.filter(session=session).select_related(
+        "candidate",
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Exam Enrollments"
+
+    # Header row
+    ws.append(["Symbol No", "Password", "Seat Number"])
+
+    for enrollment in enrollments:
+        candidate = enrollment.candidate
+        seat = (
+            SeatAssignment.objects.filter(enrollment=enrollment)
+            .select_related("hall")
+            .first()
+        )
+
+        if seat and seat.seat_number:
+            hall_name = seat.hall.name if seat.hall else "No Hall"
+            if isinstance(seat.seat_number, int):
+                formatted_seat_number = f"{hall_name}-C{seat.seat_number:03d}"
+            else:
+                prefix = "".join([c for c in seat.seat_number if c.isalpha()])
+                number_part = "".join([c for c in seat.seat_number if c.isdigit()])
+                formatted_seat_number = (
+                    f"{hall_name} - {prefix}{int(number_part):03d}"
+                    if number_part
+                    else f"{hall_name} - {seat.seat_number}"
+                )
+        else:
+            formatted_seat_number = "Not Assigned"
+
+        # Get password without replacing any characters
+        password = getattr(candidate, "generated_password", "N/A")
+
+        # Append row
+        ws.append(
+            [
+                candidate.symbol_number,
+                password,
+                formatted_seat_number,
+            ],
+        )
+
+    # Adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                max_length = max(max_length, len(str(cell.value)))
+            except Exception:
+                pass
+        adjusted_width = max_length + 2
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # Save workbook to bytes buffer
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.xlsx"
+
+    return FileResponse(
+        output,
+        as_attachment=True,
+        filename=filename,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
