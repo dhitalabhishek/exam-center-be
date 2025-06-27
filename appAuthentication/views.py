@@ -19,6 +19,7 @@ from .models import Candidate
 from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 from .utils.closest_enrollment import get_closest_enrollment
+from .utils.closest_session import get_closest_session
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -30,6 +31,32 @@ def get_tokens_for_user(user):
         "refresh": str(refresh),
         "access": str(refresh.access_token),
     }
+
+
+# ==========================================================
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def closest_session_view(request):
+    session = get_closest_session()
+
+    if session:
+        exam = session.exam
+        program = exam.program
+        institute = program.institute
+
+        return Response(
+            {
+                "session_id": session.id,
+                "start_time": session.base_start,
+                "status": session.status,
+                "program_id": program.id,
+                "program_name": program.name,
+                "institute_name": institute.name,
+                "institute_logo": institute.logo.url if institute.logo else None,
+            },
+        )
+
+    return Response({"message": "No session found"}, status=status.HTTP_204_NO_CONTENT)
 
 
 # ------------------------- Candidate Registration -------------------------

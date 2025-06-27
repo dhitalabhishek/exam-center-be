@@ -1,9 +1,9 @@
 from django.apps import apps
+from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.generic import TemplateView
-from django.contrib import admin
 
 
 @method_decorator(staff_member_required, name="dispatch")

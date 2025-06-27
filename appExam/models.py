@@ -355,6 +355,25 @@ class StudentExamEnrollment(models.Model):
         return True
 
 
+# ========================= Seat Assignment =============================
+class SeatAssignment(models.Model):
+    enrollment = models.OneToOneField(
+        StudentExamEnrollment,
+        on_delete=models.CASCADE,
+        related_name="seat_assignment",
+    )
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+    hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
+    seat_number = models.PositiveIntegerField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["hall", "seat_number"]),
+        ]
+
+    def __str__(self):
+        return f"{self.enrollment.candidate.symbol_number} - Hall: {self.hall.name}, Seat: {self.seat_number}"  # noqa: E501
+
 
 # ======================== Student Answer Model ========================
 class StudentAnswer(models.Model):

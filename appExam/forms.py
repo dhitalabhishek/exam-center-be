@@ -1,7 +1,9 @@
 import os
 
 from django import forms
+from django.contrib.admin.widgets import AdminSplitDateTime
 
+from .models import ExamSession
 from .models import Hall
 
 
@@ -9,10 +11,12 @@ class DocumentUploadForm(forms.Form):
     document = forms.FileField(
         label="Select Document",
         help_text="Upload a .csv file containing questions and answers",
-        widget=forms.FileInput(attrs={
-            "accept": ".csv",
-            "class": "form-control",
-        }),
+        widget=forms.FileInput(
+            attrs={
+                "accept": ".csv",
+                "class": "form-control",
+            },
+        ),
     )
 
     def clean_document(self):
@@ -34,7 +38,6 @@ class DocumentUploadForm(forms.Form):
         return document
 
 
-
 class EnrollmentRangeForm(forms.Form):
     def __init__(self, session_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,3 +54,31 @@ class EnrollmentRangeForm(forms.Form):
             ),
             help_text="Enter comma-separated ranges or individual symbols.",
         )
+
+
+class CleanAdminSplitDateTime(AdminSplitDateTime):
+    def __init__(self, attrs=None):
+        widgets = (
+            forms.DateInput(attrs={"type": "date", "class": "vDateField form-control"}),
+            forms.TimeInput(
+                format="%H:%M",
+                attrs={"type": "time", "step": 60, "class": "vTimeField form-control"},
+            ),
+        )
+        super().__init__(attrs)
+        self.widgets = widgets
+
+
+class ExamSessionForm(forms.ModelForm):
+    class Meta:
+        model = ExamSession
+        fields = "__all__"  # noqa: DJ007
+        widgets = {
+            "base_start": CleanAdminSplitDateTime(),
+        }
+
+    def clean_base_start(self):
+        dt = self.cleaned_data.get("base_start")
+        if dt:
+            return dt.replace(second=0, microsecond=0)
+        return dt

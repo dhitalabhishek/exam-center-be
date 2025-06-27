@@ -15,6 +15,7 @@ from appCore.tasks import pause_exam_session
 from appCore.tasks import resume_exam_session
 
 from .admin_view import enroll_students_view
+from .forms import ExamSessionForm
 from .models import Answer
 from .models import Exam
 from .models import ExamSession
@@ -81,6 +82,7 @@ class TimeLeftFilter(admin.SimpleListFilter):
 
 @admin.register(ExamSession)
 class ExamSessionAdmin(admin.ModelAdmin):
+    form = ExamSessionForm
     search_fields = ("id", "exam_program")
     ordering = ("-base_start",)
     list_display = (
@@ -91,9 +93,11 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "status_colored",
         "expected_end",
         "pause_resume_button",
+        "actions_column",
     )
     list_filter = ("status", "exam__program", TimeLeftFilter)
     date_hierarchy = "base_start"
+    list_display_links = ("id", "exam")
     list_per_page = 10
     actions = ["bulk_pause", "bulk_resume", "bulk_end"]
     inlines = [EnrollmentInline]
@@ -106,7 +110,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "completed_at",
         "updated_at",
         "created_at",
-        "enroll_students_link",
+        "actions_column",
         "session_controls",
     )
     fields = (
@@ -119,12 +123,21 @@ class ExamSessionAdmin(admin.ModelAdmin):
         "pause_start",
         "total_paused",
         "completed_at",
-        "enroll_students_link",
+        "actions_column",
         "notice",
         "session_controls",
         "updated_at",
         "created_at",
     )
+
+    def import_questions_link(self, obj):
+        if obj.pk:
+            url = reverse("admin:appExam_question_import_document", args=[obj.pk])
+            return format_html(
+                '<a class="btn btn-sm btn-outline-success" href="{}">📥 Import Questions</a>',  # noqa: E501
+                url,
+            )
+        return "-"
 
     def status_colored(self, obj):
         color_map = {
@@ -164,16 +177,23 @@ class ExamSessionAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    def enroll_students_link(self, obj):
-        if obj.pk:
-            url = reverse("admin:enroll_students", args=[obj.pk])
-            return format_html(
-                '<a href="{}" class="button">📝 Enroll Students</a>',
-                url,
-            )
-        return "Save the session first"
+    def actions_column(self, obj):
+        if not obj.pk:
+            return "-"
 
-    enroll_students_link.short_description = "Quick Actions"
+        enroll_url = reverse("admin:enroll_students", args=[obj.pk])
+        import_url = reverse("admin:appExam_question_import_document", args=[obj.pk])
+
+        return format_html(
+            """
+            <a href="{}" class="btn btn-sm btn-outline-primary" style="margin-right: 5px;">📝 Enroll</a>
+            <a href="{}" class="btn btn-sm btn-outline-success">📥 Import</a>
+            """,  # noqa: E501
+            enroll_url,
+            import_url,
+        )
+
+    actions_column.short_description = "Actions"
 
     def pause_session(self, request, object_id):
         session = get_object_or_404(ExamSession, pk=object_id)

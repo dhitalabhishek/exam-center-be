@@ -10,6 +10,7 @@ from rest_framework.routers import SimpleRouter
 
 from appAuthentication.serializers import CandidateLoginSerializer
 from appAuthentication.views import candidate_login_view
+from appAuthentication.views import closest_session_view
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 
@@ -28,15 +29,25 @@ custom_urls = [
         )(candidate_login_view),
         name="candidate-login",
     ),
+    path(
+        "initial/info/",
+        extend_schema(
+            methods=["GET"],
+            responses={
+                200: OpenApiResponse(description="Closest exam session found"),
+                204: OpenApiResponse(description="No session found"),
+            },
+        )(closest_session_view),
+        name="intitial-info",
+    ),
     # Institutions “upcoming events” and “student event” endpoints
     # path(
     #     "institutions/",
     #     include(("appInstitutions.urls", "institutions"), namespace="institutions"),  # noqa: E501, ERA001
     # ),
-
     # Exam specific endpoints (“events/upcoming” and “events/student/<id>”)
     path("exam/", include(("appExam.urls", "exam"), namespace="exam")),
-    path("core/",include(("appCore.urls","core"),namespace="core")),
+    path("core/", include(("appCore.urls", "core"), namespace="core")),
 ]
 
 app_name = "api"
