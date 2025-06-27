@@ -34,6 +34,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
     is_candidate = models.BooleanField(default=False)
+    token_version = models.IntegerField(default=0)
     admin_password2 = models.CharField(max_length=128, blank=True, null=True)  # noqa: DJ001
 
     USERNAME_FIELD = "email"

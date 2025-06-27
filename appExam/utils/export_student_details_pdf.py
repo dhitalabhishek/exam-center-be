@@ -1,8 +1,12 @@
 from io import BytesIO
 
 from django.http import FileResponse
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from reportlab.platypus import PageBreak
+from reportlab.platypus import SimpleDocTemplate
+from reportlab.platypus import Table
+from reportlab.platypus import TableStyle
 
 from appExam.models import ExamSession
 from appExam.models import SeatAssignment
@@ -14,8 +18,20 @@ def download_exam_pdf_view(request, session_id):
     enrollments = StudentExamEnrollment.objects.filter(session=session).select_related(
         "candidate",
     )
+
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
+    page_width, page_height = A4
+    left_margin = right_margin = 40  # adjust as needed
+    usable_width = page_width - left_margin - right_margin
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+    )
+
+    elements = []
 
     for enrollment in enrollments:
         candidate = enrollment.candidate
@@ -25,35 +41,59 @@ def download_exam_pdf_view(request, session_id):
             .first()
         )
 
-        hall_name = seat.hall.name if seat and seat.hall else "No Hall Assigned"
-
         if seat and seat.seat_number:
+            hall_name = seat.hall.name if seat.hall else "No Hall"
             if isinstance(seat.seat_number, int):
-                # If seat_number is an integer (e.g. 1, 45, 200)
-                formatted_seat_number = f"C{seat.seat_number:03d}"
+                formatted_seat_number = f"{hall_name} - C{seat.seat_number:03d}"
             else:
-                # If seat_number is string (e.g. 'c1', 'c045')
                 prefix = "".join([c for c in seat.seat_number if c.isalpha()])
                 number_part = "".join([c for c in seat.seat_number if c.isdigit()])
                 formatted_seat_number = (
-                    f"{prefix}{int(number_part):03d}"
+                    f"{hall_name} - {prefix}{int(number_part):03d}"
                     if number_part
-                    else seat.seat_number
+                    else f"{hall_name} - {seat.seat_number}"
                 )
         else:
             formatted_seat_number = "Not Assigned"
 
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(100, 800, f"Symbol Number: {candidate.symbol_number}")
-        pdf.setFont("Helvetica", 12)
-        pdf.drawString(
-            100, 770, f"Password: {getattr(candidate, 'generated_password', 'N/A')}",
-        )
-        pdf.drawString(100, 740, f"Seat: {hall_name} - {formatted_seat_number}")
-        pdf.showPage()
+        # Get password without replacing any characters
+        password = getattr(candidate, "generated_password", "N/A")
 
-    pdf.save()
+        data = [
+            ["Symbol No", "Password", "Seat Number"],  # table header
+            [
+                candidate.symbol_number,
+                password,
+                formatted_seat_number,
+            ],
+        ]
+
+        # Set column widths proportionally to fill usable width
+        col_widths = [usable_width * 0.33, usable_width * 0.33, usable_width * 0.34]
+
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Courier-Bold"),  # header font
+                    ("FONTNAME", (0, 1), (-1, -1), "Courier"),  # body font
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ],
+            ),
+        )
+
+        elements.append(table)
+        elements.append(PageBreak())  # page break per candidate
+
+    # Remove last PageBreak to avoid blank last page
+    if elements and isinstance(elements[-1], PageBreak):
+        elements = elements[:-1]
+
+    doc.build(elements)
     buffer.seek(0)
+
     return FileResponse(
         buffer,
         as_attachment=True,

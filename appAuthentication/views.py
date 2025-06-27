@@ -9,7 +9,6 @@ from rest_framework.decorators import api_view
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from appExam.models import Answer
 from appExam.models import Question
@@ -20,17 +19,18 @@ from .serializers import CandidateLoginSerializer
 from .serializers import CandidateRegistrationSerializer
 from .utils.closest_enrollment import get_closest_enrollment
 from .utils.closest_session import get_closest_session
+from .utils.tokens import get_tokens_for_user
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-def get_tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    return {
-        "refresh": str(refresh),
-        "access": str(refresh.access_token),
-    }
+# def get_tokens_for_user(user):
+#     refresh = RefreshToken.for_user(user)
+#     return {
+#         "refresh": str(refresh),
+#         "access": str(refresh.access_token),
+#     }
 
 
 # ==========================================================
@@ -217,4 +217,10 @@ def build_candidate_login_payload(candidate, access_token, enrollment):
 
 
 def get_image_url(image_field):
-    return image_field.url if getattr(image_field, "url", None) else None
+    if not image_field:
+        return None
+    try:
+        return image_field.url
+    except ValueError:
+        # Handles cases where ImageField exists but no file is attached
+        return None
