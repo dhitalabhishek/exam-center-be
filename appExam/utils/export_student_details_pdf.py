@@ -44,7 +44,7 @@ def download_exam_pdf_view(request, session_id):
         if seat and seat.seat_number:
             hall_name = seat.hall.name if seat.hall else "No Hall"
             if isinstance(seat.seat_number, int):
-                formatted_seat_number = f"{hall_name} - C{seat.seat_number:03d}"
+                formatted_seat_number = f"{hall_name}-C{seat.seat_number:03d}"
             else:
                 prefix = "".join([c for c in seat.seat_number if c.isalpha()])
                 number_part = "".join([c for c in seat.seat_number if c.isdigit()])

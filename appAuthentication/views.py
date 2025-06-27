@@ -221,6 +221,6 @@ def get_image_url(image_field):
         return None
     try:
         return image_field.url
-    except ValueError:
+    except:  # noqa: E722
         # Handles cases where ImageField exists but no file is attached
         return None
