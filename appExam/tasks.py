@@ -17,40 +17,96 @@ logger = logging.getLogger(__name__)
 BATCH_LOG_INTERVAL = 100
 
 
-def extract_full_numeric(symbol):
-    digits = re.findall(r"\d+", symbol)
-    return int("".join(digits)) if digits else None
+def extract_symbol_components(symbol):
+    """
+    Extract prefix and numeric parts from a symbol number.
+    Handles complex formats like 'MG12XX10', 'b10001', etc.
+    Examples: 
+    - 'MG12XX10' -> {'prefix': 'mg12xx', 'number': 10}
+    - 'b10001' -> {'prefix': 'b', 'number': 10001}
+    - 'CSE2023001' -> {'prefix': 'cse2023', 'number': 1}
+    """
+    if not symbol:
+        return None
+    
+    symbol = symbol.strip()
+    
+    # Find the last continuous sequence of digits
+    match = re.search(r'(\d+)$', symbol)
+    if not match:
+        return None
+    
+    number_part = match.group(1)
+    prefix_part = symbol[:match.start()]
+    
+    return {
+        'prefix': prefix_part.lower(),
+        'number': int(number_part)
+    }
 
 
 def parse_flexible_range_string(range_string):
+    """
+    Parse range string with prefix awareness.
+    Examples:
+    - 'b10001|b10101' -> [{'prefix': 'b', 'start': 10001, 'end': 10101}]
+    - 'p10001|p10101' -> [{'prefix': 'p', 'start': 10001, 'end': 10101}]
+    - '*' -> '*'
+    """
     range_string = range_string.strip()
     if range_string == "*":
         return "*"
 
     ranges = []
     tokens = [token.strip() for token in range_string.split(",") if token.strip()]
+    
     for token in tokens:
         if "|" in token:
             parts = token.split("|")
             if len(parts) >= 2:
-                start, end = (
-                    extract_full_numeric(parts[0]),
-                    extract_full_numeric(parts[-1]),
-                )
-                if start is not None and end is not None:
-                    ranges.append((min(start, end), max(start, end)))
+                start_comp = extract_symbol_components(parts[0])
+                end_comp = extract_symbol_components(parts[-1])
+                
+                if (start_comp and end_comp and 
+                    start_comp['prefix'] == end_comp['prefix']):
+                    ranges.append({
+                        'prefix': start_comp['prefix'],
+                        'start': min(start_comp['number'], end_comp['number']),
+                        'end': max(start_comp['number'], end_comp['number'])
+                    })
+                else:
+                    logger.warning(f"Invalid range token: {token} - prefixes must match")
         else:
-            val = extract_full_numeric(token)
-            if val is not None:
-                ranges.append((val, val))
+            comp = extract_symbol_components(token)
+            if comp:
+                ranges.append({
+                    'prefix': comp['prefix'],
+                    'start': comp['number'],
+                    'end': comp['number']
+                })
+            else:
+                logger.warning(f"Invalid symbol format: {token}")
+    
     return ranges
 
 
 def is_symbol_in_range(symbol, ranges):
-    numeric = extract_full_numeric(symbol)
-    if numeric is None:
+    """
+    Check if a symbol falls within any of the given ranges.
+    Now prefix-aware: 'b10001' will only match ranges with prefix 'b'.
+    """
+    if ranges == "*":
+        return True
+    
+    comp = extract_symbol_components(symbol)
+    if not comp:
         return False
-    return any(start <= numeric <= end for start, end in ranges)
+    
+    return any(
+        range_item['prefix'] == comp['prefix'] and
+        range_item['start'] <= comp['number'] <= range_item['end']
+        for range_item in ranges
+    )
 
 
 def is_seat_available(hall, seat_number, session):
@@ -122,6 +178,7 @@ def enroll_students_by_symbol_range(self, session_id, hall_assignment_id, range_
 
             try:
                 ranges = parse_flexible_range_string(range_string)
+                logger.info(f"Parsed ranges: {ranges}")
             except ValueError as e:
                 msg = f"Invalid range format: {e!s}"
                 raise ValueError(msg) from e

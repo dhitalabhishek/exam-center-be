@@ -173,9 +173,8 @@ class HallAndStudentAssignment(models.Model):
         related_name="hall_assignments",
     )
     hall = models.ForeignKey(Hall, on_delete=models.CASCADE)
-    roll_number_range = models.CharField(
-        max_length=100,
-        help_text="Format: MG12XX10 - MG12XX20",
+    roll_number_range = models.TextField(
+        help_text="Enter one or more roll number ranges, e.g., MG12XX10 - MG12XX20",
     )
 
     def __str__(self):
@@ -324,13 +323,17 @@ class StudentExamEnrollment(models.Model):
             self.paused_duration += now - self.paused_at
             self.paused_at = None
 
-        self.status = "active"
-        self.save()
+        if self.status != "submitted":
+            self.status = "active"
+            self.save()
         return True
 
     def handle_connect(self):
         """Simplified: Always treat connection as start/resume"""
         if self.session.status != "ongoing":
+            return False
+
+        if self.status == "submitted":
             return False
 
         self.present = True

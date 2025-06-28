@@ -56,14 +56,14 @@ def get_exam_session_view(request):
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-        if enrollment.status == "submitted":
-            return Response(
-                {
-                    "error": "Exam already submitted",
-                    "status": 409,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
+    if enrollment.status == "submitted":
+        return Response(
+            {
+                "error": "Exam already submitted",
+                "status": 409,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
 
     exam = session.exam
 

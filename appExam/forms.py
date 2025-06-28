@@ -37,21 +37,24 @@ class DocumentUploadForm(forms.Form):
 
         return document
 
-
 class EnrollmentRangeForm(forms.Form):
     def __init__(self, session_id, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.fields["hall"] = forms.ModelChoiceField(
             queryset=Hall.objects.all(),
             label="Select Hall",
             help_text="Select the hall for the students to be assigned to.",
         )
+
         self.fields["range_string"] = forms.CharField(
             label="Symbol Number Range",
-            max_length=500,
-            widget=forms.TextInput(
-                attrs={"placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH"},
-            ),
+            widget=forms.Textarea(attrs={
+                "rows": 5,
+                "placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH, MG12XX10 - MG12XX99",
+                "class": "form-control form-control-lg",
+                "style": "resize:vertical;",  # optional for UX
+            }),
             help_text="Enter comma-separated ranges or individual symbols.",
         )
 
