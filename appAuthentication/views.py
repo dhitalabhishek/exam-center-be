@@ -114,8 +114,9 @@ def candidate_login_view(request):
     
     if enrollment.status == "submitted":
         return Response(
-            {"error": "You are not enrolled in any exam session."},
-            statu
+            {"error": "Session already Submitted."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     # If enrollment exists but questions haven't been randomized yet, do it now
     if not enrollment.question_order or not enrollment.answer_order:
