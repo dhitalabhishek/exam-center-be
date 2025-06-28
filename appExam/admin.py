@@ -15,6 +15,7 @@ from appCore.tasks import pause_exam_session
 from appCore.tasks import resume_exam_session
 
 from .admin_view import enroll_students_view
+from .admin_view import download_results_csv_view
 from .forms import ExamSessionForm
 from .models import Answer
 from .models import Exam
@@ -28,8 +29,8 @@ from .question_admin_view import import_questions_document_view
 from .question_admin_view import import_questions_view
 from .question_admin_view import parse_questions_view
 
-# from .utils.export_student_details_pdf import download_exam_pdf_view  # noqa: ERA001
-from .utils.export_student_details_pdf import download_exam_excel_view
+from .utils.export_student_details_pdf import download_exam_pdf_view  # noqa: ERA001
+# from .utils.export_student_details_pdf import download_exam_excel_view
 
 admin.site.register(StudentAnswer)
 
@@ -167,8 +168,13 @@ class ExamSessionAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "<int:session_id>/download-results-csv/",
+                self.admin_site.admin_view(download_results_csv_view),
+                name="exam_session_download_results_csv",
+            ),
+            path(
                 "<int:session_id>/download-enrollments-pdf/",
-                self.admin_site.admin_view(download_exam_excel_view),
+                self.admin_site.admin_view(download_exam_pdf_view),
                 name="exam_session_download_pdf",
             ),
             path(
@@ -197,15 +203,22 @@ class ExamSessionAdmin(admin.ModelAdmin):
         import_url = reverse("admin:appExam_question_import_document", args=[obj.pk])
         pdf_url = reverse("admin:exam_session_download_pdf", args=[obj.pk])
 
+        show_results_html = ""
+        if obj.status == "completed":
+            results_url = reverse("admin:exam_session_download_results_csv", args=[obj.pk])
+            show_results_html = f'<a href="{results_url}" class="btn btn-sm btn-outline-secondary">📊 Show Results</a>'
+
         return format_html(
             """
             <a href="{}" class="btn btn-sm btn-outline-primary" style="margin-right: 5px;">📝 Enroll</a>
-            <a href="{}" class="btn btn-sm btn-outline-success">📥 Import</a>
-            <a href="{}" class="btn btn-sm btn-outline-info">📄 Export PDF</a>
-            """,  # noqa: E501
+            <a href="{}" class="btn btn-sm btn-outline-success" style="margin-right: 5px;">📥 Import</a>
+            <a href="{}" class="btn btn-sm btn-outline-info" style="margin-right: 5px;">📄 Export PDF</a>
+            {}
+            """,
             enroll_url,
             import_url,
             pdf_url,
+            format_html(show_results_html),
         )
 
     actions_column.short_description = "Actions"

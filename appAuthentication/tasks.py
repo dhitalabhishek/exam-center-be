@@ -148,10 +148,10 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                             f"Row {index + 1}: Invalid email format. Assigned default domain."
                         )
 
-                    random_password = "".join(
-                        random.choices(string.ascii_letters + string.digits, k=8),
-                    )
+                    allowed_digits = string.digits.replace("0", "").replace("1", "")
 
+                    random_password = "".join(random.choices(allowed_digits, k=8))  # noqa: S311
+                    
                     users_batch.append(
                         {
                             "email": email,

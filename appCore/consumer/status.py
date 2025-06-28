@@ -11,6 +11,7 @@ from appCore.tasks import complete_expired_sessions
 from appCore.tasks import submit_student_exam
 from appCore.utils.redis_client import get_redis_client
 from appExam.models import StudentExamEnrollment
+from appAuthentication.utils.closest_enrollment import get_closest_enrollment
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,7 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _fetch_enrollment(self):
         try:
-            return StudentExamEnrollment.objects.select_related("session").get(
-                candidate=self.scope["user"].candidate_profile,
-                status__in=["active", "inactive"],
-            )
+            return get_closest_enrollment(self.scope["user"].candidate_profile)
         except StudentExamEnrollment.DoesNotExist:
             return None
 

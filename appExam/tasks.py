@@ -30,8 +30,8 @@ def parse_flexible_range_string(range_string):
     ranges = []
     tokens = [token.strip() for token in range_string.split(",") if token.strip()]
     for token in tokens:
-        if "-" in token:
-            parts = token.split("-")
+        if "|" in token:
+            parts = token.split("|")
             if len(parts) >= 2:
                 start, end = (
                     extract_full_numeric(parts[0]),

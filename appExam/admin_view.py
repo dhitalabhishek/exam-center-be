@@ -1,6 +1,10 @@
+import csv
+
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.utils import timezone
@@ -11,6 +15,30 @@ from .models import ExamSession
 from .models import HallAndStudentAssignment
 from .tasks import enroll_students_by_symbol_range
 
+
+def download_results_csv_view(request, session_id):
+    session = get_object_or_404(ExamSession, pk=session_id)
+    enrollments = session.enrollments.all()
+
+    # Format filename as: result_for_{session.exam} at {session.base_start}
+    exam_name = str(session.exam).replace(" ", "_")  # replace spaces for filename safety
+    base_start_str = session.base_start.strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"result_for_{exam_name}_at_{base_start_str}.csv"
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow(["Symbol Number", "Score"])
+
+    for enrollment in enrollments:
+        student = enrollment.candidate
+
+        correct_count = enrollment.student_answers.filter(selected_answer__is_correct=True).count()
+
+        writer.writerow([student.symbol_number, correct_count])
+
+    return response
 
 # Custom admin view for enrolling students
 @staff_member_required

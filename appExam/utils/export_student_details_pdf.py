@@ -1,18 +1,38 @@
 from io import BytesIO
 
+import qrcode
 from django.http import FileResponse
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.platypus import Image
 from reportlab.platypus import PageBreak
 from reportlab.platypus import SimpleDocTemplate
+from reportlab.platypus import Spacer
 from reportlab.platypus import Table
 from reportlab.platypus import TableStyle
 
 from appExam.models import ExamSession
 from appExam.models import SeatAssignment
 from appExam.models import StudentExamEnrollment
+
+
+def generate_qr_code(symbol_number: str) -> BytesIO:
+    """Generate QR code for a symbol number and return as BytesIO."""
+    qr = qrcode.QRCode(
+        version=1,
+        box_size=10,
+        border=1,
+    )
+    qr.add_data(symbol_number)
+    qr.make(fit=True)
+    img = qr.make_image(fill="black", back_color="white")
+
+    img_buffer = BytesIO()
+    img.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+    return img_buffer
 
 
 def download_exam_pdf_view(request, session_id):
@@ -23,7 +43,7 @@ def download_exam_pdf_view(request, session_id):
 
     buffer = BytesIO()
     page_width, page_height = A4
-    left_margin = right_margin = 40  # adjust as needed
+    left_margin = right_margin = 40
     usable_width = page_width - left_margin - right_margin
 
     doc = SimpleDocTemplate(
@@ -31,6 +51,8 @@ def download_exam_pdf_view(request, session_id):
         pagesize=A4,
         leftMargin=left_margin,
         rightMargin=right_margin,
+        topMargin=20,  # shift content higher
+        bottomMargin=20,
     )
 
     elements = []
@@ -58,19 +80,13 @@ def download_exam_pdf_view(request, session_id):
         else:
             formatted_seat_number = "Not Assigned"
 
-        # Get password without replacing any characters
         password = getattr(candidate, "generated_password", "N/A")
 
+        # Prepare table data
         data = [
-            ["Symbol No", "Password", "Seat Number"],  # table header
-            [
-                candidate.symbol_number,
-                password,
-                formatted_seat_number,
-            ],
+            ["Symbol No", "Password", "Seat Number"],
+            [candidate.symbol_number, password, formatted_seat_number],
         ]
-
-        # Set column widths proportionally to fill usable width
         col_widths = [usable_width * 0.33, usable_width * 0.33, usable_width * 0.34]
 
         table = Table(data, colWidths=col_widths)
@@ -78,20 +94,27 @@ def download_exam_pdf_view(request, session_id):
             TableStyle(
                 [
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Courier-Bold"),  # header font
-                    ("FONTNAME", (0, 1), (-1, -1), "Courier"),  # body font
+                    ("FONTNAME", (0, 0), (-1, 0), "Courier-Bold"),
+                    ("FONTNAME", (0, 1), (-1, -1), "Courier"),
                     ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                     ("GRID", (0, 0), (-1, -1), 1, colors.black),
                 ],
             ),
         )
 
-        elements.append(table)
-        elements.append(PageBreak())  # page break per candidate
+        # Generate QR code image
+        qr_buffer = generate_qr_code(candidate.symbol_number)
+        qr_image = Image(qr_buffer, width=100, height=100)  # Adjust size as needed
 
-    # Remove last PageBreak to avoid blank last page
+        # Layout: Table at top, then QR code below with small spacing
+        elements.append(table)
+        elements.append(Spacer(1, 12))  # small gap
+        elements.append(qr_image)
+        elements.append(PageBreak())
+
+    # Remove trailing page break
     if elements and isinstance(elements[-1], PageBreak):
-        elements = elements[:-1]
+        elements.pop()
 
     doc.build(elements)
     buffer.seek(0)
