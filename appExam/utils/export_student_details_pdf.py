@@ -41,6 +41,32 @@ def download_exam_pdf_view(request, session_id):
         "candidate",
     )
 
+    # Create a list of enrollments with their seat info for sorting
+    enrollment_data = []
+    for enrollment in enrollments:
+        seat = (
+            SeatAssignment.objects.filter(enrollment=enrollment)
+            .select_related("hall")
+            .first()
+        )
+        enrollment_data.append((enrollment, seat))
+
+    # Sort by seat number - handle both integer and string seat numbers
+    def seat_sort_key(item):
+        enrollment, seat = item
+        if not seat or not seat.seat_number:
+            return (999999, "")  # Put unassigned seats at the end
+        
+        if isinstance(seat.seat_number, int):
+            return (seat.seat_number, "")
+        else:
+            # Extract numeric part for sorting string seat numbers
+            number_part = "".join([c for c in str(seat.seat_number) if c.isdigit()])
+            prefix = "".join([c for c in str(seat.seat_number) if c.isalpha()])
+            return (int(number_part) if number_part else 999999, prefix)
+
+    enrollment_data.sort(key=seat_sort_key)
+
     buffer = BytesIO()
     page_width, page_height = A4
     left_margin = right_margin = 40
@@ -57,13 +83,8 @@ def download_exam_pdf_view(request, session_id):
 
     elements = []
 
-    for enrollment in enrollments:
+    for enrollment, seat in enrollment_data:
         candidate = enrollment.candidate
-        seat = (
-            SeatAssignment.objects.filter(enrollment=enrollment)
-            .select_related("hall")
-            .first()
-        )
 
         if seat and seat.seat_number:
             hall_name = seat.hall.name if seat.hall else "No Hall"
@@ -82,7 +103,7 @@ def download_exam_pdf_view(request, session_id):
 
         password = getattr(candidate, "generated_password", "N/A")
 
-        # Prepare table data
+        # Prepare table data - PDF keeps password column
         data = [
             ["Symbol No", "Password", "Seat Number"],
             [candidate.symbol_number, password, formatted_seat_number],
@@ -132,14 +153,18 @@ def download_exam_excel_view(request, session_id):
         "candidate",
     )
 
+    # Create a list for sorting by symbol number
+    enrollment_list = list(enrollments)
+    enrollment_list.sort(key=lambda x: x.candidate.symbol_number)
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Exam Enrollments"
 
-    # Header row
-    ws.append(["Symbol No", "Password", "Seat Number"])
+    # Header row - added Name column
+    ws.append(["Symbol No", "Name", "Seat Number"])
 
-    for enrollment in enrollments:
+    for enrollment in enrollment_list:
         candidate = enrollment.candidate
         seat = (
             SeatAssignment.objects.filter(enrollment=enrollment)
@@ -162,14 +187,17 @@ def download_exam_excel_view(request, session_id):
         else:
             formatted_seat_number = "Not Assigned"
 
-        # Get password without replacing any characters
-        password = getattr(candidate, "generated_password", "N/A")
+        # Format full name
+        full_name = f"{candidate.first_name}"
+        if candidate.middle_name:
+            full_name += f" {candidate.middle_name}"
+        full_name += f" {candidate.last_name}"
 
-        # Append row
+        # Append row - added name
         ws.append(
             [
                 candidate.symbol_number,
-                password,
+                full_name,
                 formatted_seat_number,
             ],
         )

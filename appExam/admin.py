@@ -30,7 +30,7 @@ from .question_admin_view import import_questions_view
 from .question_admin_view import parse_questions_view
 
 from .utils.export_student_details_pdf import download_exam_pdf_view  # noqa: ERA001
-# from .utils.export_student_details_pdf import download_exam_excel_view
+from .utils.export_student_details_pdf import download_exam_excel_view
 
 admin.site.register(StudentAnswer)
 
@@ -168,6 +168,12 @@ class ExamSessionAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "<int:session_id>/download-enrollment/",
+                self.admin_site.admin_view(download_exam_excel_view),
+                name="exam_session_download_excel",
+            ),
+
+            path(
                 "<int:session_id>/download-results-csv/",
                 self.admin_site.admin_view(download_results_csv_view),
                 name="exam_session_download_results_csv",
@@ -202,6 +208,7 @@ class ExamSessionAdmin(admin.ModelAdmin):
         enroll_url = reverse("admin:enroll_students", args=[obj.pk])
         import_url = reverse("admin:appExam_question_import_document", args=[obj.pk])
         pdf_url = reverse("admin:exam_session_download_pdf", args=[obj.pk])
+        excel_url = reverse("admin:exam_session_download_excel", args=[obj.pk])
 
         show_results_html = ""
         if obj.status == "completed":
@@ -213,11 +220,13 @@ class ExamSessionAdmin(admin.ModelAdmin):
             <a href="{}" class="btn btn-sm btn-outline-primary" style="margin-right: 5px;">📝 Enroll</a>
             <a href="{}" class="btn btn-sm btn-outline-success" style="margin-right: 5px;">📥 Import</a>
             <a href="{}" class="btn btn-sm btn-outline-info" style="margin-right: 5px;">📄 Export PDF</a>
+            <a href="{}" class="btn btn-sm btn-outline-info" style="margin-right: 5px;">📄 Export Excel</a>
             {}
             """,
             enroll_url,
             import_url,
             pdf_url,
+            excel_url,
             format_html(show_results_html),
         )
 
