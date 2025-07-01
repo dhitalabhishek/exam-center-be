@@ -393,11 +393,13 @@ INSTALLED_APPS += [
 
 INSTALLED_APPS = [
     "django_prometheus",
+    "silk",
     *INSTALLED_APPS,
 ]
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
 MIDDLEWARE = [
     *MIDDLEWARE,
+    "silk.middleware.SilkyMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
     "appCore.middleware.APILogMiddleware",
 ]
