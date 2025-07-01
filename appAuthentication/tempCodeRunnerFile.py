@@ -1,0 +1,1 @@
+        if not self.pk or not hasattr(self, "user_id") or self.user_id is None:

@@ -70,10 +70,6 @@ class CustomUserAdmin(admin.ModelAdmin):
     ordering = ("-is_superuser", "email")  # superusers at top
     search_fields = ("email",)
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.filter(is_admin=False)
-
     def get_readonly_fields(self, request, obj=None):
         readonly_fields = ["admin_password2"]
         if obj:

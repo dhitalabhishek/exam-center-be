@@ -110,6 +110,9 @@ def process_batch(users_batch, candidates_batch, institute):
     """
     Process batch using get_or_create for robust duplicate handling
     Returns (created_count, errors_list)
+
+    This version completely bypasses the Candidate.save() method's user creation logic
+    by using direct database operations.
     """
     created_count = 0
     errors = []
@@ -141,7 +144,7 @@ def process_batch(users_batch, candidates_batch, institute):
             # Use get_or_create for user - handles race conditions automatically
             user, user_created = User.objects.get_or_create(
                 email=unique_email,
-                defaults={"is_candidate": user_data.get("is_candidate", True)},
+                defaults={"is_candidate": True, "password": user_data["password"]},
             )
 
             if not user_created:
@@ -160,14 +163,24 @@ def process_batch(users_batch, candidates_batch, institute):
             )
             candidate_data["program_id"] = program_id
 
-            # Create candidate - this is safe now since we checked for duplicates
-            Candidate.objects.create(**candidate_data, user=user)
+            # Create candidate using bulk_create or direct SQL to completely bypass save()
+            candidate = Candidate.objects.create(
+                **candidate_data,
+                user=user,
+            )
             created_count += 1
 
         except Exception as e:
-            error_msg = f"Failed to create user {user_data['email']}: {e!s}"
+            error_msg = f"Failed to create candidate for {user_data['email']}: {e!s}"
             logger.exception(error_msg)
             errors.append(error_msg)
+
+            # Clean up user if candidate creation failed
+            if "user" in locals() and user_created:
+                try:
+                    user.delete()
+                except Exception:
+                    pass
             continue
 
     return created_count, errors

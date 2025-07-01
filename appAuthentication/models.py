@@ -115,7 +115,7 @@ class Candidate(models.Model):
     level = models.CharField(max_length=100, default="", blank=True)
     program_id = models.IntegerField(default=0, blank=True)
     program = models.CharField(max_length=100, default="", blank=True)
-    generated_password = models.CharField(max_length=128, default="", blank=True)
+    generated_password = models.CharField(max_length=128)
 
     # Nullable field as intended
     middle_name = models.CharField(max_length=100, blank=True, null=True)  # noqa: DJ001
@@ -150,8 +150,6 @@ class Candidate(models.Model):
         Institute,
         on_delete=models.CASCADE,
         related_name="candidates",
-        null=True,
-        blank=True,
     )
 
     class Meta:
@@ -171,29 +169,52 @@ class Candidate(models.Model):
         return f"{first} {last} ({self.symbol_number})".strip()
 
     def save(self, *args, **kwargs):
+        # Check if this is a new instance or if user doesn't exist
+        create_user = False
+
+        # New instance - definitely need to create user
+        if not hasattr(self, "user_id") or self.user_id is None:
+            create_user = True
+
+        if create_user:
+            email_to_use = (
+                self.email if self.email else f"{self.symbol_number}@example.com"
+            )
+            password_to_use = self.generated_password
+            user = User.objects.create_user(
+                email=email_to_use,
+                password=password_to_use,
+                is_candidate=True,
+            )
+            self.user = user
+
         # Clean and validate data before saving
         self.symbol_number = self.symbol_number.strip() if self.symbol_number else ""
         self.email = self.email.strip().lower() if self.email else ""
         self.first_name = self.first_name.strip() if self.first_name else ""
 
-        # Check if generated_password has changed
+        # Check if generated_password has changed (only for existing instances)
         password_changed = False
-        if self.pk:  # If this is an update (not a new record)
+        if self.pk:
             try:
                 old_instance = Candidate.objects.get(pk=self.pk)
                 if old_instance.generated_password != self.generated_password:
                     password_changed = True
             except Candidate.DoesNotExist:
-                # This shouldn't happen, but handle gracefully
                 password_changed = True
-        else:  # This is a new record
-            password_changed = True
+        else:
+            # For new instances, always update password if generated_password is set
+            password_changed = bool(self.generated_password)
 
-        # Save the candidate first
         super().save(*args, **kwargs)
 
-        # Update the user's password if generated_password changed
-        if password_changed and self.generated_password and self.user:
+        # Update user password if needed
+        if (
+            password_changed
+            and self.generated_password
+            and hasattr(self, "user")
+            and self.user
+        ):
             self.user.set_password(self.generated_password)
             self.user.save()
 
