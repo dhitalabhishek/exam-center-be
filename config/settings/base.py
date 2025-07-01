@@ -329,7 +329,6 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 
-
 # https://docs.allauth.org/en/latest/account/configuration.html
 # ACCOUNT_ADAPTER = "backend.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
@@ -368,7 +367,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://69.62.85.89",
     "https://localhost:8003",
     "http://10.10.0.2",
-    "http://ioe.clamphook.com"
+    "http://ioe.clamphook.com",
 ]
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that

@@ -6,12 +6,12 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.db import transaction
 from django.utils import timezone
 
+from appAuthentication.utils.closest_enrollment import get_closest_enrollment
 from appCore.models import AdminNotification  # Ensure this is imported
 from appCore.tasks import complete_expired_sessions
 from appCore.tasks import submit_student_exam
 from appCore.utils.redis_client import get_redis_client
 from appExam.models import StudentExamEnrollment
-from appAuthentication.utils.closest_enrollment import get_closest_enrollment
 
 logger = logging.getLogger(__name__)
 

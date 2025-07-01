@@ -19,7 +19,7 @@ def exam_monitor():
     """Central task that coordinates all exam checks."""
     activate_scheduled_sessions.delay()
     complete_expired_sessions.delay()
-    submit_expired_students.delay()  # NEW: Check individual student time limits
+    submit_expired_students.delay()
     return "Exam monitoring tasks dispatched"
 
 
@@ -121,7 +121,7 @@ def submit_student_exam(enrollment_id):
                 logger.info(f"Successfully submitted enrollment {enrollment_id}")
                 return f"Submitted enrollment {enrollment_id}"
             return f"Enrollment {enrollment_id} was already submitted"
-        return (
+        return (  # noqa: TRY300
             f"Enrollment {enrollment_id} not in submittable state: {enrollment.status}"
         )
     except StudentExamEnrollment.DoesNotExist:

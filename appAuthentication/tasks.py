@@ -3,24 +3,112 @@ import logging
 import os
 import random
 import string
+from datetime import datetime
 
 import pandas as pd
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
+from django.db import transaction
 
 from appAuthentication.models import Candidate
 from appCore.models import CeleryTask
 from appCore.utils.track_task import track_task
 from appInstitutions.models import Institute
+from appInstitutions.models import Program
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-def process_batch(users_batch, candidates_batch):
+def get_or_create_program_id(institute, program_name):
     """
-    BEST APPROACH: Process batch using get_or_create for robust duplicate handling
+    Get existing program_id or create next available one
+    """
+    if not program_name:
+        program_name = "General"
+
+    # Try to find existing program by name (case-insensitive)
+    existing_program = Program.objects.filter(
+        institute=institute,
+        name__iexact=program_name.strip(),
+    ).first()
+
+    if existing_program:
+        return existing_program.program_id
+
+    # Get next available program_id
+    existing_programs = Program.objects.filter(institute=institute)
+    if existing_programs.exists():
+        # Try to get the highest numeric program_id and increment
+        max_id = 0
+        for prog in existing_programs:
+            try:
+                prog_id_num = int(prog.program_id)
+                max_id = max(max_id, prog_id_num)
+            except ValueError:
+                continue
+        next_id = str(max_id + 1)
+    else:
+        next_id = "1"
+
+    # Create new program
+    try:
+        with transaction.atomic():
+            new_program = Program.objects.create(
+                name=program_name.strip(),
+                institute=institute,
+                program_id=next_id,
+                description=f"Auto-created program for {program_name}",
+            )
+            logger.info(
+                f"Created new program: {program_name} with ID: {next_id} for institute: {institute.name}",  # noqa: G004
+            )
+            return new_program.program_id
+    except Exception as e:
+        logger.error(f"Failed to create program {program_name}: {e}")
+        # Try to find if someone else created it in the meantime
+        retry_program = Program.objects.filter(
+            institute=institute,
+            name__iexact=program_name.strip(),
+        ).first()
+        if retry_program:
+            return retry_program.program_id
+        return "1"  # Fallback
+
+
+def generate_unique_email(base_email, institute_name, symbol_number):
+    """
+    Generate a unique email if the original is missing or duplicate
+    """
+    if not base_email or "@" not in base_email:
+        # Generate email from symbol number and institute
+        clean_institute = "".join(c for c in institute_name if c.isalnum()).lower()
+        return f"{symbol_number}@{clean_institute}.edu"
+
+    # Clean the email
+    base_email = base_email.strip().lower().replace(" ", "")
+
+    # Check if email already exists
+    if not User.objects.filter(email=base_email).exists():
+        return base_email
+
+    # Generate variations for duplicate emails
+    base_part, domain = base_email.split("@", 1)
+
+    for i in range(1, 100):  # Try up to 99 variations
+        new_email = f"{base_part}{i}@{domain}"
+        if not User.objects.filter(email=new_email).exists():
+            return new_email
+
+    # Final fallback
+    timestamp = int(datetime.now().timestamp())
+    return f"{base_part}{timestamp}@{domain}"
+
+
+def process_batch(users_batch, candidates_batch, institute):
+    """
+    Process batch using get_or_create for robust duplicate handling
     Returns (created_count, errors_list)
     """
     created_count = 0
@@ -37,19 +125,40 @@ def process_batch(users_batch, candidates_batch):
                 )
                 continue
 
+            # Generate unique email
+            original_email = user_data["email"]
+            unique_email = generate_unique_email(
+                original_email,
+                institute.name,
+                candidate_data["symbol_number"],
+            )
+
+            if unique_email != original_email:
+                errors.append(
+                    f"Email changed from '{original_email}' to '{unique_email}' for symbol {candidate_data['symbol_number']}",
+                )
+
             # Use get_or_create for user - handles race conditions automatically
             user, user_created = User.objects.get_or_create(
-                email=user_data["email"],
+                email=unique_email,
                 defaults={"is_candidate": user_data.get("is_candidate", True)},
             )
 
             if not user_created:
-                errors.append(f"User with email {user_data['email']} already exists")
+                # This shouldn't happen now with unique email generation
+                errors.append(f"User with email {unique_email} already exists")
                 continue
 
             # Set password properly since get_or_create doesn't hash it
             user.set_password(user_data["password"])
             user.save()
+
+            # Get or create program_id
+            program_id = get_or_create_program_id(
+                institute,
+                candidate_data.get("program", ""),
+            )
+            candidate_data["program_id"] = program_id
 
             # Create candidate - this is safe now since we checked for duplicates
             Candidate.objects.create(**candidate_data, user=user)
@@ -57,7 +166,7 @@ def process_batch(users_batch, candidates_batch):
 
         except Exception as e:
             error_msg = f"Failed to create user {user_data['email']}: {e!s}"
-            logger.error(error_msg)
+            logger.exception(error_msg)
             errors.append(error_msg)
             continue
 
@@ -105,7 +214,7 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
             candidates_batch = []
 
             logger.info(
-                f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name} using {file_format}",
+                f"Starting to process {total_rows} candidates from {file_extension} file for institute {institute.name} using {file_format}",  # noqa: E501, G004
             )
 
             task.message = f"Processing {total_rows} candidates ({file_format})"
@@ -120,10 +229,10 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                     else:
                         data = clean_row_data(row)
 
-                    # Validate required fields
-                    if not data.get("symbol_number") or not data.get("email"):
+                    # Validate required fields - only symbol_number is truly required
+                    if not data.get("symbol_number"):
                         all_errors.append(
-                            f"Row {index + 1}: Missing required fields (symbol_number or email)",
+                            f"Row {index + 1}: Missing required symbol_number",
                         )
                         continue
 
@@ -137,24 +246,15 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                         data["initial_image"] = None
 
                     symbol = data["symbol_number"]
-                    email = data["email"].lower()
+                    email = data.get("email", "").strip().lower()
 
-                    email = email.strip().replace(" ", "")
-
-                    # Basic validation
-                    if not email or "@" not in email:
-                        email += "@wrongmail.com"
-                        all_errors.append(
-                            f"Row {index + 1}: Invalid email format. Assigned default domain."
-                        )
-
+                    # Generate password
                     allowed_digits = string.digits.replace("0", "").replace("1", "")
-
                     random_password = "".join(random.choices(allowed_digits, k=8))  # noqa: S311
-                    
+
                     users_batch.append(
                         {
-                            "email": email,
+                            "email": email,  # Will be processed in generate_unique_email
                             "password": random_password,
                             "is_candidate": True,
                         },
@@ -173,6 +273,7 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                         batch_created, batch_errors = process_batch(
                             users_batch,
                             candidates_batch,
+                            institute,
                         )
                         processed_rows += batch_created
                         all_errors.extend(batch_errors)
@@ -196,6 +297,7 @@ def process_candidates_file(self, file_path, institute_id, file_format="format1"
                 batch_created, batch_errors = process_batch(
                     users_batch,
                     candidates_batch,
+                    institute,
                 )
                 processed_rows += batch_created
                 all_errors.extend(batch_errors)
@@ -364,7 +466,7 @@ def clean_row_data_format2(row):
         "phone": safe_str(row.get("Mobile")),
         "level_id": 0,
         "level": level,
-        "program_id": 1,
+        "program_id": 0,  # Will be set in process_batch
         "program": program,
         "initial_image": "",
     }
@@ -375,7 +477,7 @@ def validate_file_format(file_path, expected_format=None):
     Validate if the uploaded file has the correct format and required columns
     If expected_format is None, auto-detect the format
     """
-    file_extension = os.path.splitext(file_path)[1].lower()
+    file_extension = os.path.splitext(file_path)[1].lower()  # noqa: PTH122
 
     try:
         if file_extension == ".csv":
@@ -451,7 +553,7 @@ def validate_file_format(file_path, expected_format=None):
             "detected_format": expected_format,
         }
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return {
             "is_valid": False,
             "error": f"Error reading file: {e!s}",
