@@ -86,9 +86,16 @@ class CandidateAdmin(admin.ModelAdmin):
         "last_name",
         "get_institute_name",
         "program_id",
+        "level_id",
+        "exam_status",
     )
-    search_fields = ("symbol_number", "first_name", "last_name")
-    list_filter = ("institute",)
+    search_fields = ("symbol_number", "first_name", "last_name", "email", "phone")
+    list_filter = (
+        "institute",
+        "exam_status",
+        "program_id",
+        "level_id",
+    )
 
     def get_institute_name(self, obj):
         return obj.institute.name if obj.institute else "No Institute"
@@ -98,7 +105,6 @@ class CandidateAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context["show_import_button"] = True
-        # Add institutes to the context for the modal
         extra_context["institutes"] = Institute.objects.all()
         return super().changelist_view(request, extra_context)
 
@@ -114,15 +120,9 @@ class CandidateAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def import_candidates(self, request):  # noqa: C901, PLR0911
-        """
-        Import candidates from CSV or Excel files
-        Supports both format1 (original) and format2 (new simplified format)
-        """
-        # Get institute_id from GET parameters
         institute_id = request.GET.get("institute_id")
         selected_institute = None
 
-        # Validate institute if provided
         if institute_id:
             try:
                 selected_institute = Institute.objects.get(id=institute_id)
@@ -132,19 +132,13 @@ class CandidateAdmin(admin.ModelAdmin):
 
         if request.method == "POST":
             uploaded_file = request.FILES.get("candidate_file")
-            # Get institute_id and format from POST data
             institute_id = request.POST.get("institute_id")
-            file_format = request.POST.get(
-                "file_format",
-                "auto",
-            )  # auto, format1, or format2
+            file_format = request.POST.get("file_format", "auto")
 
-            # Validation
             if not uploaded_file:
                 messages.error(request, "Please select a file.")
                 return redirect(request.get_full_path())
 
-            # Check file extension
             allowed_extensions = [".csv", ".xlsx", ".xls"]
             file_extension = uploaded_file.name.lower().split(".")[-1]
             if f".{file_extension}" not in allowed_extensions:
@@ -159,19 +153,16 @@ class CandidateAdmin(admin.ModelAdmin):
                 return redirect(request.get_full_path())
 
             try:
-                # Save the file temporarily
                 file_name = f"candidate_imports/{institute_id}_{uploaded_file.name}"
                 file_path = default_storage.save(
                     file_name,
                     ContentFile(uploaded_file.read()),
                 )
 
-                # Validate file format before processing
                 expected_format = None if file_format == "auto" else file_format
                 validation_result = validate_file_format(file_path, expected_format)
 
                 if not validation_result["is_valid"]:
-                    # Clean up the uploaded file
                     default_storage.delete(file_path)
                     messages.error(
                         request,
@@ -179,10 +170,8 @@ class CandidateAdmin(admin.ModelAdmin):
                     )
                     return redirect(request.get_full_path())
 
-                # Use detected format if auto-detection was used
                 final_format = validation_result.get("detected_format", "format1")
 
-                # Start the Celery task with the detected/selected format
                 task = process_candidates_file.delay(
                     file_path,
                     institute_id,
@@ -192,31 +181,28 @@ class CandidateAdmin(admin.ModelAdmin):
                 messages.success(
                     request,
                     f"File upload started! Task ID: {task.id}. "
-                    f"Processing {validation_result['total_rows']} rows from {validation_result['file_type']} file "  # noqa: E501
+                    f"Processing {validation_result['total_rows']} rows from {validation_result['file_type']} file "
                     f"using {final_format}. "
-                    "Processing will happen in the background. "
                     "You'll be notified when it's complete.",
                 )
                 return redirect("admin:appAuthentication_candidate_changelist")
 
-            except Exception as e:  # noqa: BLE001
-                # Clean up file if it was saved
+            except Exception as e:
                 if "file_path" in locals():
-                    try:  # noqa: SIM105
+                    try:
                         default_storage.delete(file_path)
-                    except:  # noqa: E722, S110
+                    except:
                         pass
                 messages.error(request, f"Error processing file: {e!s}")
                 return redirect(request.get_full_path())
 
-        # GET request - show the upload form with preselected institute
         institutes = Institute.objects.all()
         context = {
             "institutes": institutes,
             "institute_id": institute_id,
             "selected_institute": selected_institute,
             "title": "Import Candidates",
-            "opts": self.model._meta,  # noqa: SLF001
+            "opts": self.model._meta,
             "has_view_permission": True,
             "allowed_formats": "CSV, Excel (.xlsx, .xls)",
         }
