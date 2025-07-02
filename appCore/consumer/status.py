@@ -100,7 +100,7 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
             enroll.handle_disconnect()
 
             AdminNotification.objects.create(
-                text=f"{enroll.candidate.full_name} disconnected during the exam.",
+                text=f"{enroll.candidate.symbol_number} disconnected during the exam.",
                 level="warning",
             )
         elif enroll.present:

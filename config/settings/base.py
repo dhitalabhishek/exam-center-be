@@ -368,6 +368,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://localhost:8003",
     "http://10.10.0.2",
     "http://ioe.clamphook.com",
+    "http://192.168.100.231",
 ]
 
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
@@ -393,13 +394,11 @@ INSTALLED_APPS += [
 
 INSTALLED_APPS = [
     "django_prometheus",
-    "silk",
     *INSTALLED_APPS,
 ]
 MIDDLEWARE = ["django_prometheus.middleware.PrometheusBeforeMiddleware", *MIDDLEWARE]
 MIDDLEWARE = [
     *MIDDLEWARE,
-    "silk.middleware.SilkyMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
     "appCore.middleware.APILogMiddleware",
 ]

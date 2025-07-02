@@ -303,7 +303,13 @@ class DisconnectedFilter(admin.SimpleListFilter):
 
 @admin.register(StudentExamEnrollment)
 class StudentExamEnrollmentAdmin(admin.ModelAdmin):
-    search_fields = ("candidate__symbol_number", "session__id")
+    search_fields = (
+        "candidate__symbol_number",
+        "candidate__first_name",
+        "candidate__middle_name",
+        "candidate__last_name",
+        "session__id",
+    )
     ordering = ("-connection_start",)
     list_display = (
         "candidate",
@@ -312,7 +318,11 @@ class StudentExamEnrollmentAdmin(admin.ModelAdmin):
         "present",
         "effective_time_remaining_display",
     )
-    list_filter = ("session__status", "session__exam__program", DisconnectedFilter)
+    list_filter = (
+        "session__status",
+        "session__exam__program",
+        DisconnectedFilter,
+    )
     list_per_page = 30
     actions = ["force_submit", "grant_extra_time"]
 

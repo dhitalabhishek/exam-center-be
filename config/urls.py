@@ -23,7 +23,6 @@ admin.site.index_title = "Dashboard"
 
 
 urlpatterns = [
-    path("silk/", include("silk.urls", namespace="silk")),
     # Core pages
     # path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),  # noqa: E501, ERA001
     # path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),  # noqa: E501, ERA001

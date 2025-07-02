@@ -329,24 +329,31 @@ class StudentExamEnrollment(models.Model):
         return True
 
     def handle_connect(self):
-        """Simplified: Always treat connection as start/resume"""
-        if self.session.status != "ongoing":
+        """Treat connection as resume"""
+        if self.session.status != "ongoing" or self.status == "submitted":
             return False
 
-        if self.status == "submitted":
-            return False
+        now = timezone.now()
+
+        if self.individual_paused_at:
+            self.individual_paused_duration += now - self.individual_paused_at
+            self.individual_paused_at = None
 
         self.present = True
-        self.connection_start = timezone.now()
+        self.connection_start = now
         self.status = "active"
         self.disconnected_at = None
         self.save()
         return True
 
     def handle_disconnect(self):
-        """Log disconnection time"""
+        """Log disconnection time and start individual pause"""
         self.present = False
         self.disconnected_at = timezone.now()
+
+        if not self.individual_paused_at:
+            self.individual_paused_at = timezone.now()
+
         self.save()
         return True
 
@@ -360,10 +367,20 @@ class StudentExamEnrollment(models.Model):
         return False
 
     def grant_extra_time(self):
-        self.individual_duration += self.individual_paused_duration
-        self.individual_paused_duration = timedelta()
-        self.save()
-        return True
+        total_paused = self.individual_paused_duration
+
+        # If still disconnected, add current disconnection pause duration
+        if self.individual_paused_at:
+            total_paused += timezone.now() - self.individual_paused_at
+            self.individual_paused_at = timezone.now()
+
+        if total_paused > timedelta():
+            self.individual_duration += total_paused
+            self.individual_paused_duration = timedelta()
+            self.save()
+            return True
+
+        return False
 
 
 # ========================= Seat Assignment =============================
