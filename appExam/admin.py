@@ -1,6 +1,8 @@
+from datetime import datetime
 from datetime import timedelta
 
 from django.contrib import admin
+from django.db.models import Count
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import path
@@ -17,6 +19,7 @@ from appExam.admin_mixins import ExamSessionDisplayMixin
 
 from .admin_view import download_results_csv_view
 from .admin_view import enroll_students_view
+from .forms import DocumentUploadForm
 from .forms import ExamSessionForm
 from .models import Answer
 from .models import Exam
@@ -68,6 +71,15 @@ class EnrollmentInline(admin.TabularInline):
     can_delete = False
 
 
+class QuestionInline(admin.TabularInline):
+    model = Question
+    fk_name = "session"
+    fields = ("text",)
+    readonly_fields = ("text",)
+    extra = 0
+    can_delete = False
+
+
 # Custom filter: Sessions ending within next X minutes
 class TimeLeftFilter(admin.SimpleListFilter):
     title = "Time Left"
@@ -88,6 +100,42 @@ class TimeLeftFilter(admin.SimpleListFilter):
         return queryset
 
 
+class BaseStartDateTimeFilter(admin.SimpleListFilter):
+    title = "Base Start"
+    parameter_name = "filter_base_start"
+
+    def lookups(self, request, model_admin):
+        return []
+
+    def queryset(self, request, queryset):
+        date = request.GET.get("base_start__date")
+        time_str = request.GET.get("base_start__time")
+
+        if date and time_str:
+            try:
+                # Parse as local timezone
+                dt_str = f"{date} {time_str}"
+                local_dt = timezone.make_aware(
+                    datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S"),  # noqa: DTZ007
+                )
+                # Convert to UTC for DB querying
+                dt_utc = local_dt.astimezone(timezone.utc)
+                return queryset.filter(base_start=dt_utc)
+            except Exception:  # noqa: BLE001
+                return queryset
+
+        elif date:
+            try:
+                local_date = datetime.strptime(date, "%Y-%m-%d")  # noqa: DTZ007
+                local_dt = timezone.make_aware(local_date)
+                utc_date = local_dt.astimezone(timezone.utc).date()
+                return queryset.filter(base_start__date=utc_date)
+            except Exception:  # noqa: BLE001
+                return queryset
+
+        return queryset
+
+
 @admin.register(ExamSession)
 class ExamSessionAdmin(
     ExamSessionActionMixin,
@@ -102,19 +150,21 @@ class ExamSessionAdmin(
     list_display = (
         "id",
         "exam",
-        "base_start_display",  # Changed from base_start_pill
+        "base_start_display",
         "base_duration",
+        "question_count",
+        "enrollment_count",
         "status_colored",
         "expected_end",
         "pause_resume_button",
         "actions_column",
     )
-    list_filter = ("status", "exam__program", TimeLeftFilter)
+    list_filter = ("status", "exam__program", TimeLeftFilter, BaseStartDateTimeFilter)
     date_hierarchy = "base_start"
     list_display_links = ("id", "exam")
     list_per_page = 20
     actions = ["bulk_pause", "bulk_resume", "bulk_end", "enroll_students_action"]
-    inlines = [EnrollmentInline]
+    inlines = [EnrollmentInline, QuestionInline]
     readonly_fields = (
         "effective_start",
         "expected_end",
@@ -143,15 +193,28 @@ class ExamSessionAdmin(
         "created_at",
     )
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.annotate(
+            question_count=Count("question", distinct=True),
+            enrollment_count=Count("enrollments", distinct=True),
+        )
+
+    def question_count(self, obj):
+        return obj.question_count
+
+    question_count.short_description = "Questions"
+
+    def enrollment_count(self, obj):
+        return obj.enrollment_count
+
+    enrollment_count.short_description = "Enrollments"
+
     def changelist_view(self, request, extra_context=None):
-        """Override to add filter pills at the top"""
-        if extra_context is None:
-            extra_context = {}
-
-        # Add the filter pills to the context
+        extra_context = extra_context or {}
+        extra_context["upload_form"] = DocumentUploadForm()
         extra_context["base_start_filters"] = self.get_base_start_filters(request)
-
-        return super().changelist_view(request, extra_context)
+        return super().changelist_view(request, extra_context=extra_context)
 
     def get_urls(self):
         """Add custom URLs for session management"""
@@ -192,8 +255,8 @@ class ExamSessionAdmin(
 
     def actions_column(self, obj):
         """Display actions dropdown - now using the mixin"""
-        actions = self.get_session_actions(obj)
-        return self.render_dropdown_actions(actions)
+        standalone, dropdown = self.get_session_actions(obj)
+        return self.render_dropdown_actions(standalone, dropdown)
 
     actions_column.short_description = "Actions"
 

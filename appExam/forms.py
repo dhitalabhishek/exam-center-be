@@ -51,7 +51,7 @@ class EnrollmentRangeForm(forms.Form):
             label="Symbol Number Range",
             widget=forms.Textarea(attrs={
                 "rows": 5,
-                "placeholder": "e.g. 13-A1-PT - 13-A5-PT, 14-B1-PH, MG12XX10 - MG12XX99",
+                "placeholder": "Eg 13-A1-PT | 13-A5-PT, 14-B1-PH, MG12XX10 | MG12XX99",
                 "class": "form-control form-control-lg",
                 "style": "resize:vertical;",  # optional for UX
             }),

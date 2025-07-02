@@ -19,17 +19,22 @@ class ExamSessionActionMixin:
     """Mixin to handle action generation for ExamSession admin"""
 
     def get_session_actions(self, obj):
-        """Get available actions for a session based on its status"""
+        """Separate standalone and dropdown actions for a session"""
         if not obj.pk:
-            return []
+            return [], []
 
-        base_actions = [
+        # Standalone buttons (Enroll, Import)
+        standalone = [
             ("📝 Enroll", reverse("admin:enroll_students", args=[obj.pk]), "primary"),
             (
                 "📥 Import",
                 reverse("admin:appExam_question_import_document", args=[obj.pk]),
                 "success",
             ),
+        ]
+
+        # Dropdown actions (Export, Pause, Resume, Show Results)
+        dropdown = [
             (
                 "📄 Export PDF",
                 reverse("admin:exam_session_download_pdf", args=[obj.pk]),
@@ -42,22 +47,7 @@ class ExamSessionActionMixin:
             ),
         ]
 
-        # Add status-specific actions
         status_actions = {
-            "ongoing": [
-                (
-                    "⏸ Pause",
-                    reverse("admin:exam_session_pause", args=[obj.pk]),
-                    "warning",
-                ),
-            ],
-            "paused": [
-                (
-                    "▶ Resume",
-                    reverse("admin:exam_session_resume", args=[obj.pk]),
-                    "warning",
-                ),
-            ],
             "completed": [
                 (
                     "📊 Show Results",
@@ -67,53 +57,61 @@ class ExamSessionActionMixin:
             ],
         }
 
-        return base_actions + status_actions.get(obj.status, [])
+        dropdown += status_actions.get(obj.status, [])
+        return standalone, dropdown
 
-    def render_dropdown_actions(self, actions):
-        """Render actions as a dropdown menu"""
-        if not actions:
-            return "-"
-
-        items_html = "".join(
-            f'<a class="dropdown-item text-{cls}" href="{url}" '
-            f'style="display: block; padding: 3px 20px; clear: both; '
-            f'color: #333; text-decoration: none; white-space: nowrap;">{label}</a>'
-            for label, url, cls in actions
+    def render_dropdown_actions(self, standalone, dropdown):
+        """Render standalone buttons and dropdown menu"""
+        buttons_html = "".join(
+            f'<a class="button" style="margin-right:5px;" href="{url}"{' target="_blank"' if label.strip().endswith("Import") else ""}>{label}</a>'  # noqa: E501
+            for label, url, cls in standalone
         )
 
-        return format_html(
-            """
-            <div style="position: relative; display: inline-block;">
-                <details style="display: inline-block;">
-                    <summary style="
-                        display: inline-block; padding: 3px 6px; margin-bottom: 0;
-                        font-size: 14px; font-weight: 400; line-height: 1.5;
-                        text-align: center; white-space: nowrap; vertical-align: middle;
-                        cursor: pointer; user-select: none; background-color: transparent;
-                        border: 1px solid #ccc; border-radius: 4px; color: #333;
-                        position: relative; padding-right: 25px;
-                    ">
-                        Actions
-                        <span style="
-                            position: absolute; right: 8px; top: 50%;
-                            transform: translateY(-50%); font-size: 10px;
-                        ">▼</span>
-                    </summary>
-                    <div style="
-                        position: absolute; top: 100%; right: 0; z-index: 1000;
-                        min-width: 160px; padding: 5px 0; margin: 2px 0 0;
-                        font-size: 14px; color: #333; text-align: left;
-                        list-style: none; background-color: #fff;
-                        background-clip: padding-box; border: 1px solid rgba(0,0,0,.15);
-                        border-radius: 4px; box-shadow: 0 6px 12px rgba(0,0,0,.175);
-                    ">
-                        {items}
-                    </div>
-                </details>
-            </div>
-            """,
-            items=mark_safe(items_html),
-        )
+        if dropdown:
+            items_html = "".join(
+                f'<a class="dropdown-item text-{cls}" href="{url}" '
+                f'style="display: block; padding: 3px 20px; clear: both; '
+                f'color: #333; text-decoration: none; white-space: nowrap;">{label}</a>'
+                for label, url, cls in dropdown
+            )
+
+            dropdown_html = format_html(
+                """
+                <div style="position: relative; display: inline-block;">
+                    <details style="display: inline-block;">
+                        <summary style="
+                            display: inline-block; padding: 3px 6px; margin-bottom: 0;
+                            font-size: 14px; font-weight: 400; line-height: 1.5;
+                            text-align: center; white-space: nowrap; vertical-align: middle;
+                            cursor: pointer; user-select: none; background-color: transparent;
+                            border: 1px solid #ccc; border-radius: 4px; color: #333;
+                            position: relative; padding-right: 25px;
+                        ">
+                            Actions
+                            <span style="
+                                position: absolute; right: 8px; top: 50%;
+                                transform: translateY(-50%); font-size: 10px;
+                            ">▼</span>
+                        </summary>
+                        <div style="
+                            position: absolute; top: 100%; right: 0; z-index: 1000;
+                            min-width: 160px; padding: 5px 0; margin: 2px 0 0;
+                            font-size: 14px; color: #333; text-align: left;
+                            list-style: none; background-color: #fff;
+                            background-clip: padding-box; border: 1px solid rgba(0,0,0,.15);
+                            border-radius: 4px; box-shadow: 0 6px 12px rgba(0,0,0,.175);
+                        ">
+                            {items}
+                        </div>
+                    </details>
+                </div>
+                """,
+                items=mark_safe(items_html),
+            )
+        else:
+            dropdown_html = ""
+
+        return format_html("{}{}", mark_safe(buttons_html), dropdown_html)
 
 
 class ExamSessionDisplayMixin:
@@ -138,10 +136,11 @@ class ExamSessionDisplayMixin:
     status_colored.short_description = "Status"
 
     def base_start_display(self, obj):
-        """Simple display of base_start without pill styling"""
+        """Display base_start in local timezone"""
         if not obj.base_start:
             return "-"
-        return obj.base_start.strftime("%b %d, %Y %H:%M")
+        local_dt = timezone.localtime(obj.base_start)
+        return local_dt.strftime("%b %d, %Y %H:%M")
 
     base_start_display.short_description = "Start Time"
 
@@ -221,15 +220,18 @@ class ExamSessionDisplayMixin:
                 time_diff = now - base_start
                 relative_text = f"{self._format_time_delta(time_diff)} ago"
 
-            formatted_date = base_start.strftime("%b %d, %Y")
-            formatted_time = base_start.strftime("%H:%M")
+            local_dt = timezone.localtime(base_start)
+            formatted_date = local_dt.strftime("%b %d, %Y")
+            formatted_time = local_dt.strftime("%H:%M")
+            filter_params = {
+                "base_start__date": local_dt.date().strftime("%Y-%m-%d"),
+                "base_start__time": local_dt.time().strftime("%H:%M:%S"),
+                "filter_base_start": "1",  # ensure filter triggers
+            }
 
             # Build filter URL
             base_url = request.path
-            filter_params = {
-                "base_start__date": base_start.date().strftime("%Y-%m-%d"),
-                "base_start__time": base_start.time().strftime("%H:%M:%S"),
-            }
+
             filter_url = f"{base_url}?{urlencode(filter_params)}"
 
             pill_html = format_html(
