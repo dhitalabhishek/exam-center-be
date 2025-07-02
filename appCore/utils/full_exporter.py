@@ -2,110 +2,55 @@
 import csv
 from datetime import datetime
 
-from django.contrib import admin
-from django.contrib import messages
 from django.http import HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import render
 from django.urls import path
 from django.urls import reverse
-from django.utils.html import format_html
 
 from appAuthentication.models import Candidate
 from appExam.models import Question
-from appExam.models import StudentAnswer
 from appExam.models import StudentExamEnrollment
 
 
-class CandidateExamCSVAdmin(admin.ModelAdmin):
+class CandidateExportAdmin:
     """
-    Admin interface for exporting comprehensive candidate exam data to CSV
+    Standalone admin view for exporting all candidate exam data to CSV
+    Not tied to any specific model
     """
-
-    model = Candidate
-
-    # Display fields in the list view
-    list_display = [
-        "symbol_number",
-        "full_name_display",
-        "institute",
-        "verification_status",
-        "exam_status",
-        "total_exams_taken",
-        "export_csv_link",
-    ]
-
-    # Filters
-    list_filter = [
-        "verification_status",
-        "exam_status",
-        "institute",
-        (
-            "user__studentexamenrollment__session__exam__program",
-            admin.RelatedOnlyFieldListFilter,
-        ),
-        (
-            "user__studentexamenrollment__session__exam__subject",
-            admin.RelatedOnlyFieldListFilter,
-        ),
-    ]
-
-    # Search functionality
-    search_fields = [
-        "symbol_number",
-        "first_name",
-        "last_name",
-        "email",
-        "phone",
-    ]
-
-    # Ordering
-    ordering = ["symbol_number"]
-
-    # Add custom actions
-    actions = ["export_selected_candidates_csv", "export_all_candidates_csv"]
 
     def get_urls(self):
-        """Add custom URLs for CSV export"""
-        urls = super().get_urls()
-        custom_urls = [
+        """Define custom URLs for export functionality"""
+        return [
             path(
-                "export-csv/<int:candidate_id>/",
-                self.admin_site.admin_view(self.export_single_candidate_csv),
-                name="candidate_export_csv",
+                "candidate-export/",
+                self.export_view,
+                name="candidate_export_view",
             ),
             path(
-                "export-all-csv/",
-                self.admin_site.admin_view(self.export_all_candidates_csv_view),
-                name="candidates_export_all_csv",
+                "candidate-export/download/",
+                self.download_csv,
+                name="candidate_export_download",
             ),
         ]
-        return custom_urls + urls
 
-    def full_name_display(self, obj):
-        """Display full name"""
-        parts = [obj.first_name, obj.middle_name, obj.last_name]
-        return " ".join(filter(None, parts)) or "Unknown Name"
+    def export_view(self, request):
+        """Display export options and statistics"""
+        context = {
+            "title": "Export Candidate Data",
+            "total_candidates": Candidate.objects.count(),
+            "total_enrollments": StudentExamEnrollment.objects.count(),
+            "verified_candidates": Candidate.objects.filter(
+                verification_status="verified",
+            ).count(),
+            "export_url": reverse("admin:candidate_export_download"),
+        }
+        return render(request, "admin/candidate_export.html", context)
 
-    full_name_display.short_description = "Full Name"
-
-    def total_exams_taken(self, obj):
-        """Count total exams taken by candidate"""
-        return StudentExamEnrollment.objects.filter(candidate=obj).count()
-
-    total_exams_taken.short_description = "Exams Taken"
-
-    def export_csv_link(self, obj):
-        """Link to export individual candidate CSV"""
-        url = reverse("admin:candidate_export_csv", args=[obj.pk])
-        return format_html('<a href="{}" class="button">Export CSV</a>', url)
-
-    export_csv_link.short_description = "Export"
-
-    def export_selected_candidates_csv(self, request, queryset):
-        """Action to export selected candidates to CSV"""
+    def download_csv(self, request):
+        """Generate and download comprehensive CSV of all candidates"""
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = (
-            f'attachment; filename="candidates_exam_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+            f'attachment; filename="all_candidates_complete_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
         )
 
         writer = csv.writer(response)
@@ -114,71 +59,10 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
         headers = self.get_csv_headers()
         writer.writerow(headers)
 
-        # Write data for each candidate
-        for candidate in queryset:
-            rows = self.get_candidate_csv_data(candidate)
-            for row in rows:
-                writer.writerow(row)
+        # Get all candidates and their data
+        candidates = Candidate.objects.all().select_related("institute")
 
-        self.message_user(
-            request, f"Successfully exported {queryset.count()} candidates to CSV.",
-        )
-        return response
-
-    export_selected_candidates_csv.short_description = (
-        "Export selected candidates to CSV"
-    )
-
-    def export_all_candidates_csv(self, request, queryset):
-        """Action to export all candidates to CSV"""
-        all_candidates = Candidate.objects.all()
-        return self.export_selected_candidates_csv(request, all_candidates)
-
-    export_all_candidates_csv.short_description = "Export ALL candidates to CSV"
-
-    def export_single_candidate_csv(self, request, candidate_id):
-        """Export single candidate data to CSV"""
-        try:
-            candidate = Candidate.objects.get(pk=candidate_id)
-        except Candidate.DoesNotExist:
-            messages.error(request, "Candidate not found.")
-            return redirect("admin:appAuthentication_candidate_changelist")
-
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = (
-            f'attachment; filename="candidate_{candidate.symbol_number}_exam_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-        )
-
-        writer = csv.writer(response)
-
-        # Write headers
-        headers = self.get_csv_headers()
-        writer.writerow(headers)
-
-        # Write candidate data
-        rows = self.get_candidate_csv_data(candidate)
-        for row in rows:
-            writer.writerow(row)
-
-        return response
-
-    def export_all_candidates_csv_view(self, request):
-        """View to export all candidates data to CSV"""
-        all_candidates = Candidate.objects.all()
-
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = (
-            f'attachment; filename="all_candidates_exam_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-        )
-
-        writer = csv.writer(response)
-
-        # Write headers
-        headers = self.get_csv_headers()
-        writer.writerow(headers)
-
-        # Write data for each candidate
-        for candidate in all_candidates:
+        for candidate in candidates:
             rows = self.get_candidate_csv_data(candidate)
             for row in rows:
                 writer.writerow(row)
@@ -186,7 +70,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
         return response
 
     def get_csv_headers(self):
-        """Define CSV headers"""
+        """Define comprehensive CSV headers"""
         return [
             # Candidate Basic Info
             "Symbol Number",
@@ -231,7 +115,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
             "Unattempted Questions",
             "Marks Obtained",
             "Percentage",
-            # Question Details (Dynamic - will be filled for each question)
+            # Question Details
             "Question Order",
             "Question Number",
             "Question Text",
@@ -247,9 +131,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
 
         # Get all enrollments for this candidate
         enrollments = (
-            StudentExamEnrollment.objects.filter(
-                candidate=candidate,
-            )
+            StudentExamEnrollment.objects.filter(candidate=candidate)
             .select_related(
                 "session__exam__program",
                 "session__exam__subject",
@@ -265,18 +147,14 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
         if not enrollments.exists():
             # If no enrollments, create a row with basic candidate info
             row = self.get_basic_candidate_info(candidate)
-            row.extend(
-                [""] * (len(self.get_csv_headers()) - len(row)),
-            )  # Fill remaining columns
+            row.extend([""] * (len(self.get_csv_headers()) - len(row)))
             rows.append(row)
             return rows
 
         for enrollment in enrollments:
             # Get questions for this session
             questions = (
-                Question.objects.filter(
-                    session=enrollment.session,
-                )
+                Question.objects.filter(session=enrollment.session)
                 .prefetch_related("answers")
                 .order_by("id")
             )
@@ -298,7 +176,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
             )
             incorrect_answers = attempted_questions - correct_answers
             unattempted_questions = total_questions - attempted_questions
-            marks_obtained = correct_answers  # Assuming 1 mark per correct answer
+            marks_obtained = correct_answers
             total_marks = enrollment.session.exam.total_marks
             percentage = (marks_obtained / total_marks * 100) if total_marks > 0 else 0
 
@@ -313,7 +191,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
                     # Exam session info
                     row.extend(self.get_exam_session_info(enrollment))
 
-                    # Performance metrics (same for all questions of this exam)
+                    # Performance metrics
                     row.extend(
                         [
                             total_questions,
@@ -366,20 +244,8 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
                 row = []
                 row.extend(self.get_basic_candidate_info(candidate))
                 row.extend(self.get_exam_session_info(enrollment))
-                row.extend(
-                    [
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        "0.00%",  # Performance metrics
-                    ],
-                )
-                row.extend(
-                    ["", "", "No questions in this exam", "", "", "", ""],
-                )  # Question info
+                row.extend([0, 0, 0, 0, 0, 0, "0.00%"])
+                row.extend(["", "", "No questions in this exam", "", "", "", ""])
                 rows.append(row)
 
         return rows
@@ -390,11 +256,7 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
             " ".join(
                 filter(
                     None,
-                    [
-                        candidate.first_name,
-                        candidate.middle_name,
-                        candidate.last_name,
-                    ],
+                    [candidate.first_name, candidate.middle_name, candidate.last_name],
                 ),
             )
             or "Unknown Name"
@@ -438,7 +300,6 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
             str(enrollment.individual_duration),
             exam.total_marks,
             hall_info.hall.name if hall_info else "",
-            hall_info.hall.location if hall_info else "",
             seat_info.seat_number if seat_info else "",
             # Enrollment status info
             enrollment.get_status_display(),
@@ -456,158 +317,3 @@ class CandidateExamCSVAdmin(admin.ModelAdmin):
             str(enrollment.individual_paused_duration),
             str(enrollment.effective_time_remaining),
         ]
-
-    def changelist_view(self, request, extra_context=None):
-        """Add export all button to changelist"""
-        extra_context = extra_context or {}
-        extra_context["export_all_url"] = reverse("admin:candidates_export_all_csv")
-        return super().changelist_view(request, extra_context)
-
-
-# Register the admin
-admin.site.register(Candidate, CandidateExamCSVAdmin)
-
-
-# Optional: Create a separate admin action for bulk operations
-class ExamDataExportAdmin(admin.ModelAdmin):
-    """
-    Dedicated admin for exam data export operations
-    """
-
-    model = StudentExamEnrollment
-
-    list_display = [
-        "candidate_symbol_number",
-        "candidate_name",
-        "exam_name",
-        "session_date",
-        "status",
-        "marks_obtained",
-        "percentage",
-    ]
-
-    list_filter = [
-        "status",
-        "session__exam__program",
-        "session__exam__subject",
-        "session__base_start",
-        "candidate__institute",
-    ]
-
-    search_fields = [
-        "candidate__symbol_number",
-        "candidate__first_name",
-        "candidate__last_name",
-    ]
-
-    actions = ["export_enrollment_data_csv"]
-
-    def candidate_symbol_number(self, obj):
-        return obj.candidate.symbol_number
-
-    candidate_symbol_number.short_description = "Symbol Number"
-
-    def candidate_name(self, obj):
-        parts = [
-            obj.candidate.first_name,
-            obj.candidate.middle_name,
-            obj.candidate.last_name,
-        ]
-        return " ".join(filter(None, parts))
-
-    candidate_name.short_description = "Candidate Name"
-
-    def exam_name(self, obj):
-        exam_name = obj.session.exam.program.name
-        if obj.session.exam.subject:
-            exam_name += f" - {obj.session.exam.subject.name}"
-        return exam_name
-
-    exam_name.short_description = "Exam"
-
-    def session_date(self, obj):
-        return obj.session.base_start.strftime("%Y-%m-%d %H:%M")
-
-    session_date.short_description = "Date"
-
-    def marks_obtained(self, obj):
-        correct_answers = StudentAnswer.objects.filter(
-            enrollment=obj,
-            selected_answer__is_correct=True,
-        ).count()
-        return correct_answers
-
-    marks_obtained.short_description = "Marks"
-
-    def percentage(self, obj):
-        total_marks = obj.session.exam.total_marks or 1
-        obtained = self.marks_obtained(obj)
-        return f"{(obtained / total_marks * 100):.1f}%"
-
-    percentage.short_description = "Percentage"
-
-    def export_enrollment_data_csv(self, request, queryset):
-        """Export enrollment data to CSV"""
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = (
-            f'attachment; filename="exam_enrollments_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-        )
-
-        writer = csv.writer(response)
-
-        # Headers
-        writer.writerow(
-            [
-                "Symbol Number",
-                "Candidate Name",
-                "Institute",
-                "Exam",
-                "Date",
-                "Status",
-                "Total Questions",
-                "Attempted",
-                "Correct",
-                "Incorrect",
-                "Marks",
-                "Percentage",
-                "Duration",
-                "Time Remaining",
-            ],
-        )
-
-        # Data
-        for enrollment in queryset:
-            total_questions = Question.objects.filter(
-                session=enrollment.session,
-            ).count()
-            student_answers = StudentAnswer.objects.filter(enrollment=enrollment)
-            attempted = student_answers.filter(selected_answer__isnull=False).count()
-            correct = student_answers.filter(selected_answer__is_correct=True).count()
-            incorrect = attempted - correct
-
-            writer.writerow(
-                [
-                    enrollment.candidate.symbol_number,
-                    self.candidate_name(enrollment),
-                    enrollment.candidate.institute.name,
-                    self.exam_name(enrollment),
-                    self.session_date(enrollment),
-                    enrollment.get_status_display(),
-                    total_questions,
-                    attempted,
-                    correct,
-                    incorrect,
-                    correct,  # Assuming 1 mark per correct answer
-                    self.percentage(enrollment),
-                    str(enrollment.individual_duration),
-                    str(enrollment.effective_time_remaining),
-                ],
-            )
-
-        return response
-
-    export_enrollment_data_csv.short_description = "Export to CSV"
-
-
-# Register the exam data export admin
-admin.site.register(StudentExamEnrollment, ExamDataExportAdmin)
