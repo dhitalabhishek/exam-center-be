@@ -4,6 +4,8 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
+from appCore.models import AdminNotification
+from appCore.utils.redis_client import get_redis_client
 from appExam.models import ExamSession
 from appExam.models import StudentExamEnrollment
 
@@ -217,3 +219,28 @@ def force_submit_student(enrollment_id, reason="Manual override"):
         return f"Enrollment {enrollment_id} already submitted"
     except StudentExamEnrollment.DoesNotExist:
         return f"Enrollment {enrollment_id} not found"
+
+
+
+
+
+
+
+@shared_task
+def notify_disconnected_candidates():
+    client = get_redis_client()
+    key = "disconnected_candidates"
+    candidates = client.smembers(key)
+
+    if candidates:
+        # Convert from bytes to str if Redis returns bytes
+        candidates = [c.decode("utf-8") if isinstance(c, bytes) else c for c in candidates]
+
+        # Compose single notification
+        msg = f"Candidates disconnected in last 10s: {', '.join(candidates)}"
+
+        AdminNotification.objects.create(
+            text=msg,
+            level="warning",
+        )
+        client.delete(key)

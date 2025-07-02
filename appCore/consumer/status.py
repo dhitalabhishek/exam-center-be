@@ -7,8 +7,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from appAuthentication.utils.closest_enrollment import get_closest_enrollment
-from appCore.models import AdminNotification  # Ensure this is imported
 from appCore.tasks import complete_expired_sessions
+from appCore.tasks import notify_disconnected_candidates
 from appCore.tasks import submit_student_exam
 from appCore.utils.redis_client import get_redis_client
 from appExam.models import StudentExamEnrollment
@@ -99,13 +99,17 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
         ):
             enroll.handle_disconnect()
 
-            AdminNotification.objects.create(
-                text=f"{enroll.candidate.symbol_number} disconnected during the exam.",
-                level="warning",
-            )
+            client = get_redis_client()
+            key = "disconnected_candidates"
+            client.sadd(key, enroll.candidate.symbol_number)
+            client.expire(key, 10)  # Set expiry for batching
+
+            # Schedule task to create notification in 10 seconds
+            notify_disconnected_candidates.apply_async(countdown=10)
         elif enroll.present:
             enroll.handle_disconnect()
         return True
+
 
     async def send_status(self, data=None):
         data = await self._gather_status()

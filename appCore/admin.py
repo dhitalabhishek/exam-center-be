@@ -4,9 +4,14 @@ from django.shortcuts import redirect
 from django.urls import path
 from django.utils.html import format_html
 
+from appAuthentication.models import Candidate
+from appExam.models import StudentExamEnrollment
+
 from .models import AdminNotification
 from .models import APILog
 from .models import CeleryTask
+from .utils.full_exporter import CandidateExamCSVAdmin
+from .utils.full_exporter import ExamDataExportAdmin
 from .views import task_last_updated
 
 
@@ -134,3 +139,8 @@ class APILogAdmin(admin.ModelAdmin):
     list_display = ("timestamp", "user", "path", "method", "status_code")
     search_fields = ("user", "path", "request_data", "response_data")
     list_filter = ("method", "status_code", "timestamp")
+
+
+admin.site.register(StudentExamEnrollment, ExamDataExportAdmin)
+
+admin.site.register(Candidate, CandidateExamCSVAdmin)
