@@ -18,14 +18,75 @@ from appExam.models import StudentExamEnrollment
 
 from .utils.active_enrollment import get_candidate_active_enrollment
 
+# ------------------------- Enhanced Cache Management -------------------------
 
-# ------------------------- Cache Management -------------------------
+
+def get_enrollment_cache_version(enrollment_id: int) -> str:
+    """Get or create a cache version for enrollment-specific data"""
+    version_key = f"enrollment_version_{enrollment_id}"
+    version = cache.get(version_key)
+
+    if version is None:
+        # Use current timestamp as initial version
+        version = str(int(timezone.now().timestamp()))
+        cache.set(version_key, version, 86400)  # 24 hours
+
+    return version
+
+
+def increment_enrollment_cache_version(enrollment_id: int):
+    """Increment cache version to invalidate all enrollment-related caches"""
+    version_key = f"enrollment_version_{enrollment_id}"
+    new_version = str(int(timezone.now().timestamp()))
+    cache.set(version_key, new_version, 86400)
+
+
+def generate_versioned_cache_key(prefix: str, enrollment_id: int, *args) -> str:
+    """Generate cache keys with enrollment version for automatic invalidation"""
+    version = get_enrollment_cache_version(enrollment_id)
+    key_data = (
+        f"{prefix}_{enrollment_id}_{version}_{'_'.join(str(arg) for arg in args)}"
+    )
+
+    if len(key_data) > 200:
+        return f"{prefix}_{enrollment_id}_{version}_{hashlib.md5(key_data.encode()).hexdigest()}"
+    return key_data
+
+
 def generate_cache_key(prefix: str, *args) -> str:
     """Generate consistent cache keys with length limits"""
     key_data = f"{prefix}_{'_'.join(str(arg) for arg in args)}"
     if len(key_data) > 200:  # noqa: PLR2004
         return f"{prefix}_{hashlib.md5(key_data.encode()).hexdigest()}"  # noqa: S324
     return key_data
+
+
+def get_fresh_student_answers(
+    enrollment_id: int, question_ids: list[int],
+) -> dict[int, int]:
+    """Always get fresh student answers with minimal caching"""
+    if not question_ids:
+        return {}
+
+    # Very short cache (15 seconds) to handle rapid consecutive requests
+    # but ensure data freshness for page reloads
+    cache_key = generate_versioned_cache_key(
+        "fresh_answers", enrollment_id, hash(tuple(sorted(question_ids))),
+    )
+
+    result = cache.get(cache_key)
+    if result is not None:
+        return result
+
+    answers = StudentAnswer.objects.filter(
+        enrollment_id=enrollment_id,
+        question_id__in=question_ids,
+        selected_answer_id__isnull=False,
+    ).values_list("question_id", "selected_answer_id")
+
+    result = dict(answers)
+    cache.set(cache_key, result, 15)  # Only 15 seconds cache
+    return result
 
 
 def invalidate_student_answer_caches(enrollment_id: int, question_ids: list[int]):
@@ -276,7 +337,7 @@ def get_exam_session_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_paginated_questions_view(request):
-    """Optimized single question retrieval with caching"""
+    """Enhanced single question retrieval with proper cache versioning"""
     candidate, enrollment = get_candidate_active_enrollment(request.user)
 
     if not candidate or not enrollment:
@@ -304,6 +365,7 @@ def get_paginated_questions_view(request):
     question_id = question_order[page - 1]
     randomized_answer_ids = answer_order.get(str(question_id), [])
 
+    # Use static cache for question/answer content (doesn't change)
     static_cache_key = generate_cache_key(
         "q_static",
         question_id,
@@ -343,7 +405,8 @@ def get_paginated_questions_view(request):
         }
         cache.set(static_cache_key, cached_static_data, 1800)
 
-    student_answer_data = bulk_get_student_answers(enrollment.id, [question_id])
+    # Always get fresh student answer data
+    student_answer_data = get_fresh_student_answers(enrollment.id, [question_id])
     student_answer = None
     is_answered = False
 
@@ -383,7 +446,7 @@ def get_paginated_questions_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_question_list_view(request):
-    """Optimized question list with caching"""
+    """Enhanced question list with proper answer state management"""
     candidate, enrollment = get_candidate_active_enrollment(request.user)
 
     if not candidate or not enrollment:
@@ -401,10 +464,11 @@ def get_question_list_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Use static cache for question data
     static_cache_key = generate_cache_key(
         "static_qlist",
-        enrollment.id,
         hash(tuple(q_order)),
+        hash(str(a_order)),
     )
     cached_static_data = cache.get(static_cache_key)
 
@@ -441,7 +505,8 @@ def get_question_list_view(request):
 
         cache.set(static_cache_key, cached_static_data, 1800)
 
-    student_answer_data = bulk_get_student_answers(enrollment.id, q_order)
+    # Always get fresh student answers
+    student_answer_data = get_fresh_student_answers(enrollment.id, q_order)
     answer_letters = ["a", "b", "c", "d"]
 
     questions_data = []
@@ -555,7 +620,7 @@ def get_exam_review(request):  # noqa: C901
                     aid for qid in q_order for aid in a_order.get(str(qid), [])
                 ]
                 q_map, ans_map = bulk_get_questions_and_answers(q_order, all_answer_ids)
-                student_answer_data = bulk_get_student_answers(enrollment.id, q_order)
+                student_answer_data = get_fresh_student_answers(enrollment.id, q_order)
 
                 answer_letters = ["a", "b", "c", "d"]
                 questions_data = []
@@ -616,7 +681,7 @@ def get_exam_review(request):  # noqa: C901
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def submit_answer_view(request):  # noqa: PLR0911
-    """Secure answer submission with validation and rate limiting"""
+    """Enhanced answer submission with proper cache invalidation"""
     candidate, enrollment = get_candidate_active_enrollment(request.user)
 
     if not candidate or not enrollment:
@@ -634,18 +699,16 @@ def submit_answer_view(request):  # noqa: PLR0911
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    cache_keys = [
-        generate_cache_key("student_answers", enrollment.id, question_id),
-        generate_cache_key("static_qlist", enrollment.id),
-    ]
-
     try:
-        with atomic_with_cache_cleanup(cache_keys):
+        with transaction.atomic():
             if selected_letter is None:
                 StudentAnswer.objects.filter(
                     enrollment=enrollment,
                     question_id=question_id,
                 ).delete()
+
+                # Increment cache version to invalidate all related caches
+                increment_enrollment_cache_version(enrollment.id)
 
                 return Response(
                     {
@@ -692,6 +755,9 @@ def submit_answer_view(request):  # noqa: PLR0911
                 question_id=question_id,
                 defaults={"selected_answer_id": answer_id},
             )
+
+            # Increment cache version to invalidate all related caches
+            increment_enrollment_cache_version(enrollment.id)
 
             return Response(
                 {
@@ -750,6 +816,8 @@ def submit_active_exam(request):
             enrollment.save(update_fields=["status", "disconnected_at", "updated_at"])
 
             cache.delete_many(cache_keys)
+            # Also increment cache version to invalidate versioned caches
+            increment_enrollment_cache_version(enrollment.id)
 
         return Response({"message": "Exam submitted successfully", "status": 200})
 

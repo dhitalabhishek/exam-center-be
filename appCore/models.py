@@ -24,6 +24,10 @@ class CeleryTask(models.Model):
         ordering = ["-created"]
         verbose_name = "Celery Task"
         verbose_name_plural = "Celery Tasks"
+        indexes = [
+            models.Index(fields=["task_id"]),
+            models.Index(fields=["status", "created"]),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.status})"

@@ -70,7 +70,8 @@ def submit_expired_students():
 
     # Get all active/paused enrollments from ongoing sessions
     enrollments = StudentExamEnrollment.objects.filter(
-        status__in=["active", "paused"], session__status__in=["ongoing", "paused"],
+        status__in=["active", "paused"],
+        session__status__in=["ongoing", "paused"],
     ).select_related("session")
 
     for enrollment in enrollments:
@@ -221,11 +222,6 @@ def force_submit_student(enrollment_id, reason="Manual override"):
         return f"Enrollment {enrollment_id} not found"
 
 
-
-
-
-
-
 @shared_task
 def notify_disconnected_candidates():
     client = get_redis_client()
@@ -234,7 +230,9 @@ def notify_disconnected_candidates():
 
     if candidates:
         # Convert from bytes to str if Redis returns bytes
-        candidates = [c.decode("utf-8") if isinstance(c, bytes) else c for c in candidates]
+        candidates = [
+            c.decode("utf-8") if isinstance(c, bytes) else c for c in candidates
+        ]
 
         # Compose single notification
         msg = f"Candidates disconnected in last 10s: {', '.join(candidates)}"

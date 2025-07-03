@@ -5,7 +5,7 @@ from django.shortcuts import redirect
 from django.urls import path
 from django.utils.html import format_html
 
-from appCore.utils.full_exporter import CandidateExportAdmin
+from appCore.utils.full_exporter import SessionWiseCandidateExportAdmin
 
 from .models import AdminNotification
 from .models import APILog
@@ -139,7 +139,7 @@ class APILogAdmin(admin.ModelAdmin):
     list_filter = ("method", "status_code", "timestamp")
 
 
-candidate_export_admin = CandidateExportAdmin()
+candidate_export_admin = SessionWiseCandidateExportAdmin()
 
 # Add to admin site URLs
 
