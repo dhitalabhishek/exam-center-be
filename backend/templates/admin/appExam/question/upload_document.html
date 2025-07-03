@@ -14,15 +14,124 @@
   </div>
 {% endblock %}
 
+{% block extrahead %}
+  <style>
+    .format-config {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+    }
+    .format-config h3 {
+      margin-top: 0;
+      color: #666;
+    }
+    .format-section {
+      margin-bottom: 20px;
+      padding: 10px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      background-color: #fff;
+    }
+    .format-section h4 {
+      margin-top: 0;
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
+    }
+    .form-row {
+      margin-bottom: 15px;
+    }
+    .form-row label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .form-row .help {
+      color: #666;
+      font-size: 0.9em;
+      margin-top: 5px;
+    }
+    .format-examples {
+      background-color: #f0f8ff;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .format-examples h5 {
+      margin-top: 0;
+      color: #0066cc;
+    }
+    .format-examples pre {
+      background-color: #fff;
+      padding: 8px;
+      border-radius: 3px;
+      font-size: 0.9em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .mcq-example {
+      background-color: #e8f5e8;
+      border-left: 4px solid #28a745;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .mcq-example h4 {
+      color: #155724;
+      margin-top: 0;
+    }
+  </style>
+
+  <script>
+    function toggleFormatConfig() {
+      const formatSelect = document.getElementById('id_file_format')
+      const csvConfig = document.getElementById('csv-config')
+      const textConfig = document.getElementById('text-config')
+    
+      function updateVisibility() {
+        const selectedFormat = formatSelect.value
+    
+        if (selectedFormat === 'csv') {
+          csvConfig.style.display = 'block'
+          textConfig.style.display = 'none'
+        } else if (selectedFormat === 'text' || selectedFormat === 'docx') {
+          csvConfig.style.display = 'none'
+          textConfig.style.display = 'block'
+        } else {
+          // Auto-detect - show both
+          csvConfig.style.display = 'block'
+          textConfig.style.display = 'block'
+        }
+      }
+    
+      formatSelect.addEventListener('change', updateVisibility)
+      updateVisibility() // Initial call
+    }
+    
+    document.addEventListener('DOMContentLoaded', toggleFormatConfig)
+  </script>
+{% endblock %}
+
 {% block content %}
   <div class="module">
     <h1 style="margin-bottom: 20px;">Upload Document for {{ session }}</h1>
 
+    <!-- Primary Format Example -->
+    <div class="mcq-example">
+      <h4>📋 Standard MCQ Format (Auto-detected)</h4>
+      <p>This is the primary format that will be automatically detected from your .txt or .docx files:</p>
+      <pre>Question 1) Which of the following is the primary purpose of a centrifuge in a laboratory setting? A) To measure the pH of a solution B) To separate components of a mixture based on density C) To sterilize laboratory equipment D) To amplify DNA sequences Ans. To separate components of a mixture based on density
+
+        Question 2) What is the most appropriate action to take if a chemical spill occurs in the laboratory? A) Ignore it and continue working B) Neutralize the spill with water immediately C) Follow the laboratory's spill response protocol and use appropriate PPE D) Open all windows to ventilate the area Ans. Follow the laboratory's spill response protocol and use appropriate PPE</pre>
+    </div>
+
     <form method="post" enctype="multipart/form-data" class="aligned">
       {% csrf_token %}
 
+      <!-- File Upload Section -->
       <div class="form-row">
-        <label for="{{ form.document.id_for_label }}" style="font-weight: bold;">{{ form.document.label }}:</label><br />
+        <label for="{{ form.document.id_for_label }}" style="font-weight: bold;">{{ form.document.label }}:</label>
         {{ form.document }}
         {% if form.document.help_text %}
           <p class="help">{{ form.document.help_text }}</p>
@@ -34,6 +143,172 @@
             {% endfor %}
           </ul>
         {% endif %}
+      </div>
+
+      <!-- Format Selection -->
+      <div class="form-row">
+        <label for="{{ form.file_format.id_for_label }}" style="font-weight: bold;">{{ form.file_format.label }}:</label>
+        {{ form.file_format }}
+        {% if form.file_format.help_text %}
+          <p class="help">{{ form.file_format.help_text }}</p>
+        {% endif %}
+        {% if form.file_format.errors %}
+          <ul class="errorlist">
+            {% for error in form.file_format.errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+
+      <!-- Format Configuration -->
+      <div class="format-config">
+        <h3>Format Configuration</h3>
+
+        <!-- CSV Configuration -->
+        <div id="csv-config" class="format-section">
+          <h4>CSV Format Configuration</h4>
+
+          <div class="form-row">
+            <label for="{{ form.csv_question_column.id_for_label }}">{{ form.csv_question_column.label }}:</label>
+            {{ form.csv_question_column }}
+            {% if form.csv_question_column.help_text %}
+              <p class="help">{{ form.csv_question_column.help_text }}</p>
+            {% endif %}
+            {% if form.csv_question_column.errors %}
+              <ul class="errorlist">
+                {% for error in form.csv_question_column.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.csv_answer_column.id_for_label }}">{{ form.csv_answer_column.label }}:</label>
+            {{ form.csv_answer_column }}
+            {% if form.csv_answer_column.help_text %}
+              <p class="help">{{ form.csv_answer_column.help_text }}</p>
+            {% endif %}
+            {% if form.csv_answer_column.errors %}
+              <ul class="errorlist">
+                {% for error in form.csv_answer_column.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.csv_option_columns.id_for_label }}">{{ form.csv_option_columns.label }}:</label>
+            {{ form.csv_option_columns }}
+            {% if form.csv_option_columns.help_text %}
+              <p class="help">{{ form.csv_option_columns.help_text }}</p>
+            {% endif %}
+            {% if form.csv_option_columns.errors %}
+              <ul class="errorlist">
+                {% for error in form.csv_option_columns.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.csv_answer_format.id_for_label }}">{{ form.csv_answer_format.label }}:</label>
+            {{ form.csv_answer_format }}
+            {% if form.csv_answer_format.help_text %}
+              <p class="help">{{ form.csv_answer_format.help_text }}</p>
+            {% endif %}
+            {% if form.csv_answer_format.errors %}
+              <ul class="errorlist">
+                {% for error in form.csv_answer_format.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="format-examples">
+            <h5>CSV Format Example:</h5>
+            <pre>QUESTION,ANSWER,OPTIONS_A,OPTIONS_B,OPTIONS_C,OPTIONS_D What is 2+2?,a,4,5,6,7 What is the capital of France?,b,London,Paris,Berlin,Madrid</pre>
+          </div>
+        </div>
+
+        <!-- Text/DOCX Configuration -->
+        <div id="text-config" class="format-section">
+          <h4>Text/DOCX Format Configuration</h4>
+          <p>
+            <em>Note: Only needed if you're NOT using the standard MCQ format shown above.</em>
+          </p>
+
+          <div class="form-row">
+            <label for="{{ form.text_question_prefix.id_for_label }}">{{ form.text_question_prefix.label }}:</label>
+            {{ form.text_question_prefix }}
+            {% if form.text_question_prefix.help_text %}
+              <p class="help">{{ form.text_question_prefix.help_text }}</p>
+            {% endif %}
+            {% if form.text_question_prefix.errors %}
+              <ul class="errorlist">
+                {% for error in form.text_question_prefix.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.text_option_prefixes.id_for_label }}">{{ form.text_option_prefixes.label }}:</label>
+            {{ form.text_option_prefixes }}
+            {% if form.text_option_prefixes.help_text %}
+              <p class="help">{{ form.text_option_prefixes.help_text }}</p>
+            {% endif %}
+            {% if form.text_option_prefixes.errors %}
+              <ul class="errorlist">
+                {% for error in form.text_option_prefixes.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.text_answer_prefix.id_for_label }}">{{ form.text_answer_prefix.label }}:</label>
+            {{ form.text_answer_prefix }}
+            {% if form.text_answer_prefix.help_text %}
+              <p class="help">{{ form.text_answer_prefix.help_text }}</p>
+            {% endif %}
+            {% if form.text_answer_prefix.errors %}
+              <ul class="errorlist">
+                {% for error in form.text_answer_prefix.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="form-row">
+            <label for="{{ form.text_answer_format.id_for_label }}">{{ form.text_answer_format.label }}:</label>
+            {{ form.text_answer_format }}
+            {% if form.text_answer_format.help_text %}
+              <p class="help">{{ form.text_answer_format.help_text }}</p>
+            {% endif %}
+            {% if form.text_answer_format.errors %}
+              <ul class="errorlist">
+                {% for error in form.text_answer_format.errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+
+          <div class="format-examples">
+            <h5>Alternative Text Format Example:</h5>
+            <pre>Q. What is 2+2? 1. 4 2. 5 3. 6 4. 7 Answer: 4
+
+              Q. What is the capital of France? 1. London 2. Paris 3. Berlin 4. Madrid Answer: Paris</pre>
+          </div>
+        </div>
       </div>
 
       <div class="submit-row" style="margin-top: 25px;">

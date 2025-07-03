@@ -45,32 +45,71 @@ def import_questions_document_view(self, request, session_id):
             document = request.FILES["document"]
             file_extension = Path(document.name).suffix.lower()
 
-            if file_extension != ".csv":
-                messages.error(request, "Only .csv files are supported.")
+            # Validate file extension
+            allowed_extensions = [".csv", ".txt", ".docx"]
+            if file_extension not in allowed_extensions:
+                messages.error(
+                    request,
+                    f"Unsupported file type. Only {', '.join(allowed_extensions)} files are supported.",
+                )
                 return redirect(
                     "admin:appExam_question_import_document",
                     session_id=session_id,
                 )
 
             try:
-                from .utils.questionParser import parse_questions_from_csv
+                # Get format configuration from form
+                config = form.get_format_config()
 
-                parsed_questions = parse_questions_from_csv(document)
+                # Determine file format
+                file_format = form.cleaned_data.get("file_format", "auto")
+                if file_format == "auto":
+                    # Auto-detect based on extension
+                    if file_extension == ".csv":  # noqa: SIM108
+                        file_format = "csv"
+                    else:  # .txt or .docx
+                        file_format = (
+                            "text"  # Will auto-detect MCQ format within the parser
+                        )
 
+                # Parse questions using the appropriate parser
+                from .utils.questionParser import parse_questions_from_document
+
+                parsed_questions = parse_questions_from_document(
+                    document,
+                    file_extension,
+                    config,
+                )
+
+                if not parsed_questions:
+                    messages.warning(
+                        request,
+                        "No valid questions were found in the document. Please check your format.",
+                    )
+                    return redirect(
+                        "admin:appExam_question_import_document",
+                        session_id=session_id,
+                    )
+
+                # Store parsed data in session
                 request.session["parsed_questions"] = parsed_questions
                 request.session["session_id"] = session_id
                 request.session["document_name"] = document.name
+                request.session["file_format"] = file_format
 
                 context = {
                     **self.admin_site.each_context(request),
                     "title": f"Import Questions - {session}",
                     "session": session,
                     "document_name": document.name,
+                    "file_format": file_format,
                     "questions": parsed_questions,
+                    "total_questions": len(parsed_questions),
                     "opts": self.model._meta,
                     "has_view_permission": True,
                     "current_time": timezone.localtime(timezone.now()),
                 }
+
                 return TemplateResponse(
                     request,
                     "admin/appExam/question/parse_document.html",
@@ -78,24 +117,42 @@ def import_questions_document_view(self, request, session_id):
                 )
 
             except Exception as e:
-                messages.error(request, f"Error parsing CSV: {e!s}")
+                messages.error(request, f"Error parsing document: {e!s}")
                 return redirect(
                     "admin:appExam_question_import_document",
                     session_id=session_id,
                 )
+        else:
+            # Form has errors, render with form errors
+            context = {
+                **self.admin_site.each_context(request),
+                "title": f"Upload Document - {session}",
+                "form": form,
+                "session": session,
+                "supported_formats": [".csv", ".txt", ".docx"],
+                "opts": self.model._meta,
+                "has_view_permission": True,
+                "current_time": timezone.localtime(timezone.now()),
+            }
+            return TemplateResponse(
+                request,
+                "admin/appExam/question/upload_document.html",
+                context,
+            )
     else:
         form = DocumentUploadForm()
 
     context = {
         **self.admin_site.each_context(request),
-        "title": f"Upload CSV - {session}",
+        "title": f"Upload Document - {session}",
         "form": form,
         "session": session,
-        "supported_formats": [".csv"],
+        "supported_formats": [".csv", ".txt", ".docx"],
         "opts": self.model._meta,
         "has_view_permission": True,
         "current_time": timezone.localtime(timezone.now()),
     }
+
     return TemplateResponse(
         request,
         "admin/appExam/question/upload_document.html",
@@ -285,7 +342,7 @@ def parse_questions_view(self, request):
 
         messages.success(
             request,
-            f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from CSV and randomized for all students.",
+            f"Successfully imported {created_count} question{'s' if created_count != 1 else ''} from document and randomized for all students.",
         )
         return redirect("admin:appExam_question_changelist")
 

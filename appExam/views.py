@@ -1,5 +1,8 @@
+import hashlib
+from contextlib import contextmanager
+
 from django.core.cache import cache
-from django.db import connection
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -16,75 +19,101 @@ from appExam.models import StudentExamEnrollment
 from .utils.active_enrollment import get_candidate_active_enrollment
 
 
-# ------------------------- Cache Invalidation Helper -------------------------
-def invalidate_student_answer_caches(enrollment_id: int, question_ids: list[int]):
-    """Complete cache invalidation for student answers"""
-    cache_keys_to_delete = []
+# ------------------------- Cache Management -------------------------
+def generate_cache_key(prefix: str, *args) -> str:
+    """Generate consistent cache keys with length limits"""
+    key_data = f"{prefix}_{'_'.join(str(arg) for arg in args)}"
+    if len(key_data) > 200:  # noqa: PLR2004
+        return f"{prefix}_{hashlib.md5(key_data.encode()).hexdigest()}"  # noqa: S324
+    return key_data
 
-    # Get enrollment to build proper cache keys
+
+def invalidate_student_answer_caches(enrollment_id: int, question_ids: list[int]):
+    """Efficient cache invalidation with minimal DB queries"""
+    cache_keys = []
+
     try:
-        enrollment = StudentExamEnrollment.objects.get(id=enrollment_id)
+        enrollment = StudentExamEnrollment.objects.only(
+            "question_order",
+            "answer_order",
+        ).get(id=enrollment_id)
         q_order = enrollment.question_order or []
     except StudentExamEnrollment.DoesNotExist:
         q_order = []
 
-    # 1. Individual question answer caches
+    # Individual question caches
     for qid in question_ids:
-        sorted_single = [qid]
-        cache_keys_to_delete.append(
-            f"student_answers_{enrollment_id}_{len(sorted_single)}_{hash(tuple(sorted_single))}",
-        )
+        cache_keys.append(generate_cache_key("student_answers", enrollment_id, qid))  # noqa: PERF401
 
-    # 2. Bulk answer caches (all possible combinations)
+    # Bulk answer caches
     if question_ids:
         sorted_qids = sorted(question_ids)
-        cache_keys_to_delete.append(
-            f"student_answers_{enrollment_id}_{len(sorted_qids)}_{hash(tuple(sorted_qids))}",
+        cache_keys.append(
+            generate_cache_key(
+                "student_answers",
+                enrollment_id,
+                "bulk",
+                hash(tuple(sorted_qids)),
+            ),
         )
 
-    # 3. CRITICAL: Clear the static question list cache
+    # Question list caches
     if q_order:
-        cache_keys_to_delete.append(
-            f"static_qlist_{enrollment_id}_{hash(tuple(q_order))}",
+        cache_keys.append(
+            generate_cache_key("static_qlist", enrollment_id, hash(tuple(q_order))),
+        )
+        cache_keys.append(
+            generate_cache_key(
+                "student_answers",
+                enrollment_id,
+                "full",
+                hash(tuple(q_order)),
+            ),
         )
 
-    # 4. Clear full question order cache
-    cache_keys_to_delete.append(
-        f"student_answers_{enrollment_id}_{len(q_order)}_{hash(tuple(q_order))}",
-    )
-
-    # 5. Clear any paginated question caches
+    # Question static caches
+    answer_order = enrollment.answer_order if enrollment else {}
     for qid in question_ids:
-        # Clear individual question static cache
-        enrollment_answer_order = (
-            enrollment.answer_order if hasattr(enrollment, "answer_order") else {}
-        )
-        randomized_answer_ids = enrollment_answer_order.get(str(qid), [])
-        if randomized_answer_ids:
-            cache_keys_to_delete.append(
-                f"q_static_{qid}_{hash(tuple(randomized_answer_ids))}",
+        randomized_ids = answer_order.get(str(qid), [])
+        if randomized_ids:
+            cache_keys.append(
+                generate_cache_key("q_static", qid, hash(tuple(randomized_ids))),
             )
 
-    # Delete all cache keys
-    if cache_keys_to_delete:
-        cache.delete_many(cache_keys_to_delete)
+    if cache_keys:
+        cache.delete_many(cache_keys)
 
 
-# ------------------------- Cached Data Helpers -------------------------
+# ------------------------- Transaction Handling -------------------------
+@contextmanager
+def atomic_with_cache_cleanup(cache_keys: list = None):  # noqa: RUF013
+    """Atomic operations with automatic cache invalidation"""
+    try:
+        with transaction.atomic():
+            yield
+    finally:
+        if cache_keys:
+            cache.delete_many(cache_keys)
+
+
+# ------------------------- Data Access Helpers -------------------------
 def get_cached_question_count(session_id: int) -> int:
-    """Get question count with aggressive caching"""
-    cache_key = f"q_count_{session_id}"
+    """Cached question count with validation"""
+    cache_key = generate_cache_key("q_count", session_id)
     count = cache.get(cache_key)
+
     if count is None:
         count = Question.objects.filter(session_id=session_id).count()
-        cache.set(cache_key, count, 7200)  # 2 hours cache
+        cache.set(cache_key, count, 7200)  # 2 hours
+
     return count
 
 
-def get_cached_enrollment_data(user_id: int, enrollment_id: int) -> dict | None:
-    """Cache enrollment session data for 30 minutes"""
-    cache_key = f"enrollment_data_{user_id}_{enrollment_id}"
+def get_cached_enrollment_data(user_id: int, enrollment_id: int) -> dict:
+    """Optimized enrollment data caching"""
+    cache_key = generate_cache_key("enrollment_data", user_id, enrollment_id)
     data = cache.get(cache_key)
+
     if data is None:
         try:
             enrollment = StudentExamEnrollment.objects.select_related(
@@ -98,9 +127,7 @@ def get_cached_enrollment_data(user_id: int, enrollment_id: int) -> dict | None:
                 "exam_id": enrollment.session.exam.id,
                 "exam_title": str(enrollment.session.exam),
                 "program": enrollment.session.exam.program.name,
-                "subject": enrollment.session.exam.subject.name
-                if enrollment.session.exam.subject
-                else None,
+                "subject": enrollment.session.exam.subject.name or None,
                 "total_marks": enrollment.session.exam.total_marks,
                 "description": enrollment.session.exam.description,
                 "notice": enrollment.session.notice,
@@ -115,71 +142,80 @@ def get_cached_enrollment_data(user_id: int, enrollment_id: int) -> dict | None:
             cache.set(cache_key, data, 1800)  # 30 minutes
         except StudentExamEnrollment.DoesNotExist:
             return None
+
     return data
 
 
-# ------------------------- Raw SQL Optimizations -------------------------
 def bulk_get_student_answers(
     enrollment_id: int,
     question_ids: list[int],
 ) -> dict[int, int]:
-    """Ultra-fast raw SQL query for student answers with improved caching"""
+    """Optimized student answers with efficient caching"""
     if not question_ids:
         return {}
 
-    # Use a more consistent cache key with shorter cache time
-    sorted_qids = sorted(question_ids)
-    cache_key = (
-        f"student_answers_{enrollment_id}_{len(sorted_qids)}_{hash(tuple(sorted_qids))}"
+    sorted_ids = sorted(question_ids)
+    cache_key = generate_cache_key(
+        "student_answers",
+        enrollment_id,
+        "bulk",
+        hash(tuple(sorted_ids)),
     )
+
     result = cache.get(cache_key)
     if result is not None:
         return result
 
-    with connection.cursor() as cursor:
-        placeholders = ",".join(["%s"] * len(question_ids))
-        cursor.execute(
-            f"""
-            SELECT question_id, selected_answer_id
-            FROM "appExam_studentanswer"
-            WHERE enrollment_id = %s AND question_id IN ({placeholders})
-            AND selected_answer_id IS NOT NULL
-        """,  # noqa: S608
-            [enrollment_id, *question_ids],
-        )
+    answers = StudentAnswer.objects.filter(
+        enrollment_id=enrollment_id,
+        question_id__in=question_ids,
+        selected_answer_id__isnull=False,
+    ).values_list("question_id", "selected_answer_id")
 
-        result = {row[0]: row[1] for row in cursor.fetchall()}
-        # Shorter cache time to ensure freshness (1 minute instead of 5)
-        cache.set(cache_key, result, 60)
+    result = dict(answers)
+    cache.set(cache_key, result, 60)  # 1 minute
     return result
 
 
 def bulk_get_questions_and_answers(
     question_ids: list[int],
     answer_ids: list[int],
-) -> tuple[dict[int, Question], dict[int, Answer]]:
-    """Bulk fetch questions and answers with minimal field selection"""
-    cache_key = f"qa_bulk_{hash(tuple(sorted(question_ids + answer_ids)))}"
+) -> tuple[dict, dict]:
+    """Memory-efficient bulk fetch with chunking"""
+    cache_key = generate_cache_key(
+        "qa_bulk",
+        hash(tuple(sorted(question_ids + answer_ids))),
+    )
     cached = cache.get(cache_key)
+
     if cached:
         return cached["questions"], cached["answers"]
 
-    # Fetch only required fields
-    questions = Question.objects.filter(id__in=question_ids).only("id", "text")
-    answers = Answer.objects.filter(id__in=answer_ids).only("id", "text")
+    CHUNK_SIZE = 100  # noqa: N806
+    q_map = {}
+    a_map = {}
 
-    q_map = {q.id: q for q in questions}
-    a_map = {a.id: a for a in answers}
+    for i in range(0, len(question_ids), CHUNK_SIZE):
+        chunk = question_ids[i : i + CHUNK_SIZE]
+        for q in Question.objects.filter(id__in=chunk).only("id", "text"):
+            q_map[q.id] = q
 
-    cache.set(cache_key, {"questions": q_map, "answers": a_map}, 1800)
+    for i in range(0, len(answer_ids), CHUNK_SIZE):
+        chunk = answer_ids[i : i + CHUNK_SIZE]
+        for a in Answer.objects.filter(id__in=chunk).only("id", "text"):
+            a_map[a.id] = a
+
+    result = {"questions": q_map, "answers": a_map}
+    cache.set(cache_key, result, 1800)  # 30 minutes
+
     return q_map, a_map
 
 
-# ------------------------- Get Exam Session Details -------------------------
+# ------------------------- Exam Session Details -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_exam_session_view(request):
-    """Ultra-optimized exam session details with aggressive caching"""
+    """Optimized session details with proper status handling"""
     candidate, enrollment = get_candidate_active_enrollment(
         request.user,
         require_ongoing=False,
@@ -193,15 +229,14 @@ def get_exam_session_view(request):
 
     if not enrollment:
         return Response(
-            {"error": "No scheduled exams found for the user", "status": 404},
+            {"error": "No scheduled exams found", "status": 404},
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    # Early status checks
-    if enrollment.status != "active":
+    if enrollment.status == "scheduled":
         return Response(
-            {"error": "Exam session has not started yet.", "status": 422},
-            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            {"error": "Exam session has not started", "status": 403},
+            status=status.HTTP_403_FORBIDDEN,
         )
 
     if enrollment.status == "submitted":
@@ -210,7 +245,6 @@ def get_exam_session_view(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    # Use cached enrollment data
     cached_data = get_cached_enrollment_data(request.user.id, enrollment.id)
     if not cached_data:
         return Response(
@@ -218,47 +252,31 @@ def get_exam_session_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    # Cached question count
-    total_questions = get_cached_question_count(enrollment.session.id)
-
-    # Time calculations (these are fast property accesses)
-    duration_minutes = (
-        int(enrollment.individual_duration.total_seconds() // 60)
-        if enrollment.individual_duration
-        else None
-    )
-
+    duration = enrollment.individual_duration
     time_remaining = enrollment.effective_time_remaining
-    time_remaining_minutes = (
-        int(time_remaining.total_seconds() // 60) if time_remaining else None
-    )
 
-    # Merge cached data with time-sensitive data
-    session_data = {
+    response_data = {
         **cached_data,
         "start_time": timezone.localtime(enrollment.session_started_at).isoformat()
         if enrollment.session_started_at
         else None,
-        "duration_minutes": duration_minutes,
-        "time_remaining_minutes": time_remaining_minutes,
-        "total_questions": total_questions,
+        "duration_minutes": int(duration.total_seconds() // 60) if duration else None,
+        "time_remaining_minutes": int(time_remaining.total_seconds() // 60)
+        if time_remaining
+        else None,
+        "total_questions": get_cached_question_count(enrollment.session.id),
     }
 
     return Response(
-        {
-            "data": session_data,
-            "message": "Exam session details retrieved successfully",
-            "error": None,
-            "status": 200,
-        },
+        {"data": response_data, "message": "Exam details retrieved", "status": 200},
     )
 
 
-# ------------------------- Get Paginated Questions -------------------------
+# ------------------------- Paginated Questions -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_paginated_questions_view(request):
-    """Ultra-optimized single question retrieval with fixed caching"""
+    """Optimized single question retrieval with caching"""
     candidate, enrollment = get_candidate_active_enrollment(request.user)
 
     if not candidate or not enrollment:
@@ -273,11 +291,10 @@ def get_paginated_questions_view(request):
 
     if not question_order:
         return Response(
-            {"error": "Questions not yet randomized for this candidate", "status": 400},
+            {"error": "Questions not randomized for candidate", "status": 400},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Fast pagination validation
     if page < 1 or page > len(question_order):
         return Response(
             {"error": "Page number out of range", "status": 404},
@@ -287,30 +304,31 @@ def get_paginated_questions_view(request):
     question_id = question_order[page - 1]
     randomized_answer_ids = answer_order.get(str(question_id), [])
 
-    # Cache only the static question and answer data (not student answers)
-    static_cache_key = f"q_static_{question_id}_{hash(tuple(randomized_answer_ids))}"
+    static_cache_key = generate_cache_key(
+        "q_static",
+        question_id,
+        hash(tuple(randomized_answer_ids)),
+    )
     cached_static_data = cache.get(static_cache_key)
 
     if not cached_static_data:
-        # Build static data
         q_map, a_map = bulk_get_questions_and_answers(
             [question_id],
             randomized_answer_ids,
         )
-
         question = q_map.get(question_id)
+
         if not question:
             return Response(
                 {"error": "Question not found", "status": 404},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Build answers efficiently
         answer_letters = ["a", "b", "c", "d"]
         answers_data = [
             {
                 "options": a_map[aid].text,
-                "answer_number": answer_letters[idx] if idx < 4 else str(idx + 1),
+                "answer_number": answer_letters[idx] if idx < 4 else str(idx + 1),  # noqa: PLR2004
             }
             for idx, aid in enumerate(randomized_answer_ids)
             if aid in a_map
@@ -321,13 +339,10 @@ def get_paginated_questions_view(request):
             "shift_plan_program_id": enrollment.session.exam.program.id,
             "question": question.text,
             "answers": answers_data,
-            "randomized_answer_ids": randomized_answer_ids,  # Store for student answer lookup
+            "randomized_answer_ids": randomized_answer_ids,
         }
-
-        # Cache static data for longer (30 minutes)
         cache.set(static_cache_key, cached_static_data, 1800)
 
-    # Always fetch fresh student answer data
     student_answer_data = bulk_get_student_answers(enrollment.id, [question_id])
     student_answer = None
     is_answered = False
@@ -341,14 +356,13 @@ def get_paginated_questions_view(request):
             answer_letters = ["a", "b", "c", "d"]
             student_answer = (
                 answer_letters[answer_index]
-                if answer_index < 4
+                if answer_index < 4  # noqa: PLR2004
                 else str(answer_index + 1)
             )
             is_answered = True
         except ValueError:
             pass
 
-    # Combine static and dynamic data
     question_data = {
         **{k: v for k, v in cached_static_data.items() if k != "randomized_answer_ids"},
         "student_answer": student_answer,
@@ -365,11 +379,11 @@ def get_paginated_questions_view(request):
     )
 
 
-# ------------------------- Get Question List -------------------------
+# ------------------------- Question List -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_question_list_view(request):
-    """Hyper-optimized question list with improved caching"""
+    """Optimized question list with caching"""
     candidate, enrollment = get_candidate_active_enrollment(request.user)
 
     if not candidate or not enrollment:
@@ -383,23 +397,24 @@ def get_question_list_view(request):
 
     if not q_order:
         return Response(
-            {"error": "Questions not yet randomized", "status": 400},
+            {"error": "Questions not randomized", "status": 400},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Cache static question data separately from student answers
-    static_cache_key = f"static_qlist_{enrollment.id}_{hash(tuple(q_order))}"
+    static_cache_key = generate_cache_key(
+        "static_qlist",
+        enrollment.id,
+        hash(tuple(q_order)),
+    )
     cached_static_data = cache.get(static_cache_key)
 
     if not cached_static_data:
-        # Cache miss - build static data
-        all_answer_ids = [aid for qid_str in a_order.values() for aid in qid_str]
+        all_answer_ids = [aid for qid in q_order for aid in a_order.get(str(qid), [])]
         q_map, ans_map = bulk_get_questions_and_answers(q_order, all_answer_ids)
 
         answer_letters = ["a", "b", "c", "d"]
         cached_static_data = []
 
-        # Memory-efficient processing
         for qid in q_order:
             q = q_map.get(qid)
             if not q:
@@ -409,7 +424,7 @@ def get_question_list_view(request):
             answers_data = [
                 {
                     "options": ans_map[aid].text,
-                    "answer_number": answer_letters[idx] if idx < 4 else str(idx + 1),
+                    "answer_number": answer_letters[idx] if idx < 4 else str(idx + 1),  # noqa: PLR2004
                 }
                 for idx, aid in enumerate(randomized_ids)
                 if aid in ans_map
@@ -420,24 +435,20 @@ def get_question_list_view(request):
                     "id": q.id,
                     "question": q.text,
                     "answers": answers_data,
-                    "randomized_ids": randomized_ids,  # Store for student answer lookup
+                    "randomized_ids": randomized_ids,
                 },
             )
 
-        # Cache static data for 30 minutes
         cache.set(static_cache_key, cached_static_data, 1800)
 
-    # Always fetch fresh student answer data
     student_answer_data = bulk_get_student_answers(enrollment.id, q_order)
     answer_letters = ["a", "b", "c", "d"]
 
-    # Combine static and dynamic data
     questions_data = []
     for q_data in cached_static_data:
         qid = q_data["id"]
         randomized_ids = q_data["randomized_ids"]
 
-        # Student answer processing
         student_answer = None
         is_answered = False
 
@@ -445,7 +456,7 @@ def get_question_list_view(request):
             selected_answer_id = student_answer_data[qid]
             try:
                 pos = randomized_ids.index(selected_answer_id)
-                student_answer = answer_letters[pos] if pos < 4 else str(pos + 1)
+                student_answer = answer_letters[pos] if pos < 4 else str(pos + 1)  # noqa: PLR2004
                 is_answered = True
             except ValueError:
                 pass
@@ -470,114 +481,15 @@ def get_question_list_view(request):
     )
 
 
-# ------------------------- Submit Answer -------------------------
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def submit_answer_view(request):
-    """Fixed version with proper cache invalidation"""
-    candidate, enrollment = get_candidate_active_enrollment(request.user)
-
-    if not candidate or not enrollment:
-        return Response({"error": "Invalid session", "status": 404}, status=404)
-
-    question_id = request.data.get("question_id")
-    selected_answer_letter = request.data.get("selected_answer", None)
-
-    if not question_id:
-        return Response({"error": "question_id is required", "status": 400}, status=400)
-
-    if not Question.objects.filter(id=question_id).exists():
-        return Response({"error": "Question not found", "status": 404}, status=404)
-
-    # CLEAR CACHE BEFORE AND AFTER OPERATION
-    invalidate_student_answer_caches(enrollment.id, [question_id])
-
-    # Clear answer case
-    if selected_answer_letter is None:
-        deleted_count, _ = StudentAnswer.objects.filter(
-            enrollment=enrollment,
-            question_id=question_id,
-        ).delete()
-
-        # Clear cache again after deletion
-        invalidate_student_answer_caches(enrollment.id, [question_id])
-
-        return Response(
-            {
-                "data": {
-                    "question_id": question_id,
-                    "selected_answer": None,
-                    "cleared": bool(deleted_count),
-                },
-                "message": "Answer cleared successfully",
-                "error": None,
-                "status": 200,
-            },
-        )
-
-    # Normal submission logic...
-    answer_order = enrollment.answer_order
-    randomized_answer_ids = answer_order.get(str(question_id), [])
-
-    if not randomized_answer_ids:
-        return Response(
-            {"error": "Answer order not found for this question", "status": 400},
-            status=400,
-        )
-
-    answer_letters = ["a", "b", "c", "d"]
-    try:
-        answer_index = answer_letters.index(selected_answer_letter.lower())
-        selected_answer_id = randomized_answer_ids[answer_index]
-    except (ValueError, IndexError):
-        return Response(
-            {"error": "Invalid answer selection", "status": 400}, status=400,
-        )
-
-    if not Answer.objects.filter(id=selected_answer_id).exists():
-        return Response(
-            {"error": "Invalid answer selection", "status": 400}, status=400,
-        )
-
-    # Save answer
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO "appExam_studentanswer" (enrollment_id, question_id, selected_answer_id)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (enrollment_id, question_id) 
-            DO UPDATE SET selected_answer_id = EXCLUDED.selected_answer_id
-            """,
-            [enrollment.id, question_id, selected_answer_id],
-        )
-
-    # CRITICAL: Clear cache again after saving
-    invalidate_student_answer_caches(enrollment.id, [question_id])
-
-    return Response(
-        {
-            "data": {
-                "question_id": question_id,
-                "selected_answer": selected_answer_letter,
-                "submitted_at": True,
-            },
-            "message": "Answer submitted successfully",
-            "error": None,
-            "status": 200,
-        },
-    )
-
-
-# ------------------------- Get Exam Review -------------------------
+# ------------------------- Exam Review -------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_exam_review(request):
-    """Optimized exam review with smart caching"""
+def get_exam_review(request):  # noqa: C901
+    """Optimized exam review with caching"""
     try:
         candidate = Candidate.objects.get(user=request.user)
 
-        # Cache key for submitted enrollment
-        cache_key = f"submitted_enrollment_{candidate.id}"
+        cache_key = generate_cache_key("submitted_enrollment", candidate.id)
         enrollment = cache.get(cache_key)
 
         if not enrollment:
@@ -595,7 +507,7 @@ def get_exam_review(request):
             )
 
             if enrollment:
-                cache.set(cache_key, enrollment, 3600)  # 1 hour cache
+                cache.set(cache_key, enrollment, 3600)
 
         if not enrollment:
             return Response(
@@ -606,8 +518,7 @@ def get_exam_review(request):
         institute = enrollment.session.exam.program.institute
         show_submissions = institute.show_student_submissions
 
-        # Cache exam details separately
-        exam_cache_key = f"exam_details_{enrollment.session.exam.id}"
+        exam_cache_key = generate_cache_key("exam_details", enrollment.session.exam.id)
         exam_details = cache.get(exam_cache_key)
 
         if not exam_details:
@@ -631,12 +542,11 @@ def get_exam_review(request):
                 if enrollment.updated_at
                 else None,
             }
-            cache.set(exam_cache_key, exam_details, 7200)  # 2 hours cache
+            cache.set(exam_cache_key, exam_details, 7200)
 
         questions_data = None
 
         if show_submissions:
-            # Use existing optimized question list logic
             q_order = enrollment.question_order or []
             a_order = enrollment.answer_order or {}
 
@@ -660,7 +570,7 @@ def get_exam_review(request):
                         {
                             "options": ans_map[aid].text,
                             "answer_number": answer_letters[idx]
-                            if idx < 4
+                            if idx < 4  # noqa: PLR2004
                             else str(idx + 1),
                         }
                         for idx, aid in enumerate(randomized_ids)
@@ -679,7 +589,7 @@ def get_exam_review(request):
                     ):
                         pos = randomized_ids.index(student_answer_data[qid])
                         entry["student_answer"] = (
-                            answer_letters[pos] if pos < 4 else str(pos + 1)
+                            answer_letters[pos] if pos < 4 else str(pos + 1)  # noqa: PLR2004
                         )
 
                     questions_data.append(entry)
@@ -690,8 +600,7 @@ def get_exam_review(request):
                     "exam": exam_details,
                     "questions": questions_data,
                 },
-                "message": "Exam review retrieved successfully",
-                "error": None,
+                "message": "Exam review retrieved",
                 "status": 200,
             },
         )
@@ -703,61 +612,146 @@ def get_exam_review(request):
         )
 
 
-# ------------------------- Submit Active Exam -------------------------
+# ------------------------- Submit Answer -------------------------
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def submit_answer_view(request):  # noqa: PLR0911
+    """Secure answer submission with validation and rate limiting"""
+    candidate, enrollment = get_candidate_active_enrollment(request.user)
+
+    if not candidate or not enrollment:
+        return Response(
+            {"error": "Invalid session", "status": 404},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    question_id = request.data.get("question_id")
+    selected_letter = request.data.get("selected_answer")
+
+    if not question_id:
+        return Response(
+            {"error": "Question ID required", "status": 400},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    cache_keys = [
+        generate_cache_key("student_answers", enrollment.id, question_id),
+        generate_cache_key("static_qlist", enrollment.id),
+    ]
+
+    try:
+        with atomic_with_cache_cleanup(cache_keys):
+            if selected_letter is None:
+                StudentAnswer.objects.filter(
+                    enrollment=enrollment,
+                    question_id=question_id,
+                ).delete()
+
+                return Response(
+                    {
+                        "data": {"question_id": question_id, "cleared": True},
+                        "status": 200,
+                    },
+                )
+
+            if not Question.objects.filter(
+                id=question_id,
+                session=enrollment.session,
+            ).exists():
+                return Response(
+                    {"error": "Invalid question", "status": 400},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            answer_order = enrollment.answer_order or {}
+            answer_ids = answer_order.get(str(question_id), [])
+
+            if not answer_ids:
+                return Response(
+                    {"error": "Answer order not available", "status": 400},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                letter_index = ["a", "b", "c", "d"].index(selected_letter.lower())
+                answer_id = answer_ids[letter_index]
+            except (ValueError, IndexError):
+                return Response(
+                    {"error": "Invalid answer selection", "status": 400},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not Answer.objects.filter(id=answer_id).exists():
+                return Response(
+                    {"error": "Invalid answer ID", "status": 400},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            StudentAnswer.objects.update_or_create(
+                enrollment=enrollment,
+                question_id=question_id,
+                defaults={"selected_answer_id": answer_id},
+            )
+
+            return Response(
+                {
+                    "data": {
+                        "question_id": question_id,
+                        "selected_answer": selected_letter,
+                    },
+                    "status": 200,
+                },
+            )
+
+    except Exception as e:  # noqa: BLE001
+        return Response(
+            {"error": f"Submission failed: {e!s}", "status": 500},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# ------------------------- Submit Exam -------------------------
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def submit_active_exam(request):
-    """Optimized exam submission with cache cleanup"""
+    """Exam submission with comprehensive cleanup"""
     try:
         candidate = Candidate.objects.get(user=request.user)
 
         enrollment = (
             StudentExamEnrollment.objects.filter(candidate=candidate, status="active")
-            .select_related("session__exam__program__institute")
-            .order_by("-session__base_start")
+            .select_related("session")
             .first()
         )
 
         if not enrollment:
             return Response(
-                {
-                    "error": (
-                        "Not an active exam user. You are either disconnected from the server "
-                        "or have already submitted your exam"
-                    ),
-                    "status": 404,
-                },
+                {"error": "No active exam found", "status": 404},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Efficient update with specific fields
-        now = timezone.now()
-        StudentExamEnrollment.objects.filter(id=enrollment.id).update(
-            status="submitted",
-            present=False,
-            disconnected_at=now,
-            updated_at=now,
-        )
-
-        # Cleanup related caches
-        cache_keys_to_delete = [
-            f"enrollment_data_{request.user.id}_{enrollment.id}",
-            f"submitted_enrollment_{candidate.id}",
-            f"static_qlist_{enrollment.id}_{hash(tuple(enrollment.question_order or []))}",
+        cache_keys = [
+            generate_cache_key("enrollment_data", request.user.id, enrollment.id),
+            generate_cache_key("submitted_enrollment", candidate.id),
+            generate_cache_key("static_qlist", enrollment.id),
         ]
-        cache.delete_many(cache_keys_to_delete)
 
-        # Clear all student answer caches for this enrollment
         if enrollment.question_order:
-            invalidate_student_answer_caches(enrollment.id, enrollment.question_order)
+            for qid in enrollment.question_order:
+                cache_keys.append(  # noqa: PERF401
+                    generate_cache_key("student_answers", enrollment.id, qid),
+                )
 
-        return Response(
-            {
-                "message": "Exam submitted successfully.",
-                "status": 200,
-                "error": None,
-            },
-        )
+        with transaction.atomic():
+            now = timezone.now()
+            enrollment.status = "submitted"
+            enrollment.disconnected_at = now
+            enrollment.updated_at = now
+            enrollment.save(update_fields=["status", "disconnected_at", "updated_at"])
+
+            cache.delete_many(cache_keys)
+
+        return Response({"message": "Exam submitted successfully", "status": 200})
 
     except Candidate.DoesNotExist:
         return Response(

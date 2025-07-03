@@ -1,13 +1,11 @@
 from io import BytesIO
 
-import qrcode
 from django.http import FileResponse
-from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import Image
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import PageBreak
+from reportlab.platypus import Paragraph
 from reportlab.platypus import SimpleDocTemplate
 from reportlab.platypus import Spacer
 from reportlab.platypus import Table
@@ -16,23 +14,6 @@ from reportlab.platypus import TableStyle
 from appExam.models import ExamSession
 from appExam.models import SeatAssignment
 from appExam.models import StudentExamEnrollment
-
-
-def generate_qr_code(symbol_number: str) -> BytesIO:
-    """Generate QR code for a symbol number and return as BytesIO."""
-    qr = qrcode.QRCode(
-        version=1,
-        box_size=10,
-        border=1,
-    )
-    qr.add_data(symbol_number)
-    qr.make(fit=True)
-    img = qr.make_image(fill="black", back_color="white")
-
-    img_buffer = BytesIO()
-    img.save(img_buffer, format="PNG")
-    img_buffer.seek(0)
-    return img_buffer
 
 
 def download_exam_pdf_view(request, session_id):
@@ -51,19 +32,18 @@ def download_exam_pdf_view(request, session_id):
         )
         enrollment_data.append((enrollment, seat))
 
-    # Sort by seat number - handle both integer and string seat numbers
+    # Sort by hall name then seat number
     def seat_sort_key(item):
         enrollment, seat = item
         if not seat or not seat.seat_number:
-            return (999999, "")  # Put unassigned seats at the end
-        
+            return ("ZZZ", 999999, "")
+
+        hall_name = seat.hall.name if seat.hall else "ZZZ"
         if isinstance(seat.seat_number, int):
-            return (seat.seat_number, "")
-        else:
-            # Extract numeric part for sorting string seat numbers
-            number_part = "".join([c for c in str(seat.seat_number) if c.isdigit()])
-            prefix = "".join([c for c in str(seat.seat_number) if c.isalpha()])
-            return (int(number_part) if number_part else 999999, prefix)
+            return (hall_name, seat.seat_number, "")
+        number_part = "".join([c for c in str(seat.seat_number) if c.isdigit()])
+        prefix = "".join([c for c in str(seat.seat_number) if c.isalpha()])
+        return (hall_name, int(number_part) if number_part else 999999, prefix)
 
     enrollment_data.sort(key=seat_sort_key)
 
@@ -77,11 +57,19 @@ def download_exam_pdf_view(request, session_id):
         pagesize=A4,
         leftMargin=left_margin,
         rightMargin=right_margin,
-        topMargin=20,  # shift content higher
+        topMargin=20,
         bottomMargin=20,
     )
 
     elements = []
+    styles = getSampleStyleSheet()
+
+    # Add session info header
+    session_info = (
+        f"{session.exam.program.name} - {session.base_start.strftime('%Y-%m-%d %H:%M')}"
+    )
+    elements.append(Paragraph(session_info, styles["Title"]))
+    elements.append(Spacer(1, 12))
 
     for enrollment, seat in enrollment_data:
         candidate = enrollment.candidate
@@ -103,7 +91,7 @@ def download_exam_pdf_view(request, session_id):
 
         password = getattr(candidate, "generated_password", "N/A")
 
-        # Prepare table data - PDF keeps password column
+        # Prepare table data (without QR)
         data = [
             ["Symbol No", "Password", "Seat Number"],
             [candidate.symbol_number, password, formatted_seat_number],
@@ -123,17 +111,9 @@ def download_exam_pdf_view(request, session_id):
             ),
         )
 
-        # Generate QR code image
-        qr_buffer = generate_qr_code(candidate.symbol_number)
-        qr_image = Image(qr_buffer, width=100, height=100)  # Adjust size as needed
-
-        # Layout: Table at top, then QR code below with small spacing
         elements.append(table)
-        elements.append(Spacer(1, 12))  # small gap
-        elements.append(qr_image)
         elements.append(PageBreak())
 
-    # Remove trailing page break
     if elements and isinstance(elements[-1], PageBreak):
         elements.pop()
 
@@ -148,23 +128,22 @@ def download_exam_pdf_view(request, session_id):
 
 
 def download_exam_excel_view(request, session_id):
+    """
+    Generates a PDF (styled like Excel table) listing all enrollments with:
+    - Symbol number
+    - Full name
+    - Seat number
+    Includes exam session date/time header.
+    """
     session = ExamSession.objects.get(pk=session_id)
     enrollments = StudentExamEnrollment.objects.filter(session=session).select_related(
         "candidate",
     )
 
-    # Create a list for sorting by symbol number
-    enrollment_list = list(enrollments)
-    enrollment_list.sort(key=lambda x: x.candidate.symbol_number)
+    # Prepare data for table
+    data = [["Symbol No", "Name", "Seat Number"]]
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Exam Enrollments"
-
-    # Header row - added Name column
-    ws.append(["Symbol No", "Name", "Seat Number"])
-
-    for enrollment in enrollment_list:
+    for enrollment in enrollments:
         candidate = enrollment.candidate
         seat = (
             SeatAssignment.objects.filter(enrollment=enrollment)
@@ -172,58 +151,50 @@ def download_exam_excel_view(request, session_id):
             .first()
         )
 
-        if seat and seat.seat_number:
-            hall_name = seat.hall.name if seat.hall else "No Hall"
-            if isinstance(seat.seat_number, int):
-                formatted_seat_number = f"{hall_name}-C{seat.seat_number:03d}"
-            else:
-                prefix = "".join([c for c in seat.seat_number if c.isalpha()])
-                number_part = "".join([c for c in seat.seat_number if c.isdigit()])
-                formatted_seat_number = (
-                    f"{hall_name} - {prefix}{int(number_part):03d}"
-                    if number_part
-                    else f"{hall_name} - {seat.seat_number}"
-                )
-        else:
-            formatted_seat_number = "Not Assigned"
+        hall_name = seat.hall.name if seat and seat.hall else "No Hall"
+        seat_number = seat.seat_number if seat else "Not Assigned"
 
-        # Format full name
-        full_name = f"{candidate.first_name}"
-        if candidate.middle_name:
-            full_name += f" {candidate.middle_name}"
-        full_name += f" {candidate.last_name}"
+        full_name = f"{candidate.first_name} {candidate.middle_name or ''} {candidate.last_name}".strip()  # noqa: E501
 
-        # Append row - added name
-        ws.append(
+        data.append(
             [
                 candidate.symbol_number,
                 full_name,
-                formatted_seat_number,
+                f"{hall_name} - {seat_number}",
             ],
         )
 
-    # Adjust column widths
-    for column in ws.columns:
-        max_length = 0
-        column_letter = get_column_letter(column[0].column)
-        for cell in column:
-            try:
-                max_length = max(max_length, len(str(cell.value)))
-            except Exception:
-                pass
-        adjusted_width = max_length + 2
-        ws.column_dimensions[column_letter].width = adjusted_width
+    # Generate PDF with table
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
 
-    # Save workbook to bytes buffer
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    filename = f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.xlsx"
-
-    return FileResponse(
-        output,
-        as_attachment=True,
-        filename=filename,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    # Add session info header
+    session_info = (
+        f"{session.exam.program.name} - {session.base_start.strftime('%Y-%m-%d %H:%M')}"
     )
+    elements.append(Paragraph(session_info, styles["Title"]))
+    elements.append(Spacer(1, 12))
+
+    # Table setup
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ("FONTNAME", (0, 0), (-1, 0), "Courier-Bold"),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ],
+        ),
+    )
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    filename = (
+        f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.pdf"
+    )
+    return FileResponse(buffer, as_attachment=True, filename=filename)
