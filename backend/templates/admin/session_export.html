@@ -1,526 +1,537 @@
-<!-- templates/admin/session_export.html -->
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ title }}</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+        overflow: hidden;
+      }
+      .card-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: bold;
+      }
+      .card-body {
+        padding: 20px;
+      }
+      .export-stats {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+      .export-stats .card-header {
+        background: transparent;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+      }
+      .stats-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+      .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+      .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0;
+      }
+      .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+      }
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+      }
+      .btn-primary {
+        background: #007bff;
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #0056b3;
+      }
+      .btn-light {
+        background: white;
+        color: #333;
+        border: 1px solid #ddd;
+      }
+      .btn-light:hover {
+        background: #f8f9fa;
+      }
+      .btn-success {
+        background: #28a745;
+        color: white;
+      }
+      .btn-success:hover {
+        background: #218838;
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .task-status {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+      }
+      .task-success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .task-failure {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .task-started {
+        background-color: #cce5ff;
+        color: #004085;
+      }
+      .task-pending {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+      
+      .progress-container {
+        display: none;
+        margin-top: 20px;
+      }
+      .progress {
+        width: 100%;
+        height: 20px;
+        background-color: #e9ecef;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0;
+      }
+      .progress-bar {
+        height: 100%;
+        background-color: #007bff;
+        transition: width 0.3s ease;
+        background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
+        background-size: 1rem 1rem;
+      }
+      .progress-bar-animated {
+        animation: progress-bar-stripes 1s linear infinite;
+      }
+      .progress-bar.bg-success {
+        background-color: #28a745;
+      }
+      .progress-bar.bg-danger {
+        background-color: #dc3545;
+      }
+      @keyframes progress-bar-stripes {
+        0% {
+          background-position: 1rem 0;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        100% {
+          background-position: 0 0;
         }
-        .card {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            overflow: hidden;
+      }
+      
+      .alert {
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 5px;
+        border: 1px solid transparent;
+      }
+      .alert-success {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+      }
+      .alert-danger {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+      }
+      
+      .sessions-preview {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+      }
+      .session-item {
+        border-left: 4px solid #007bff;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+        background: #f8f9fa;
+        border-radius: 0 5px 5px 0;
+      }
+      .session-item strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+      .session-meta {
+        font-size: 12px;
+        color: #6c757d;
+      }
+      
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      .table th,
+      .table td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid #dee2e6;
+      }
+      .table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+      }
+      .table-responsive {
+        overflow-x: auto;
+      }
+      
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid transparent;
+        border-top: 2px solid currentColor;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
         }
-        .card-header {
-            background: #f8f9fa;
-            padding: 15px 20px;
-            border-bottom: 1px solid #dee2e6;
-            font-weight: bold;
+        100% {
+          transform: rotate(360deg);
         }
-        .card-body {
-            padding: 20px;
-        }
-        .export-stats {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .export-stats .card-header {
-            background: transparent;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-            color: white;
-        }
-        .stats-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            margin: 0;
-        }
-        .stat-label {
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 0.3s;
-        }
-        .btn-primary {
-            background: #007bff;
-            color: white;
-        }
-        .btn-primary:hover {
-            background: #0056b3;
-        }
-        .btn-light {
-            background: white;
-            color: #333;
-            border: 1px solid #ddd;
-        }
-        .btn-light:hover {
-            background: #f8f9fa;
-        }
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        .btn-success:hover {
-            background: #218838;
-        }
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .task-status {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-        .task-success { background-color: #d4edda; color: #155724; }
-        .task-failure { background-color: #f8d7da; color: #721c24; }
-        .task-started { background-color: #cce5ff; color: #004085; }
-        .task-pending { background-color: #fff3cd; color: #856404; }
-        
-        .progress-container {
-            display: none;
-            margin-top: 20px;
-        }
-        .progress {
-            width: 100%;
-            height: 20px;
-            background-color: #e9ecef;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        .progress-bar {
-            height: 100%;
-            background-color: #007bff;
-            transition: width 0.3s ease;
-            background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
-            background-size: 1rem 1rem;
-        }
-        .progress-bar-animated {
-            animation: progress-bar-stripes 1s linear infinite;
-        }
-        .progress-bar.bg-success {
-            background-color: #28a745;
-        }
-        .progress-bar.bg-danger {
-            background-color: #dc3545;
-        }
-        @keyframes progress-bar-stripes {
-            0% { background-position: 1rem 0; }
-            100% { background-position: 0 0; }
-        }
-        
-        .alert {
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 5px;
-            border: 1px solid transparent;
-        }
-        .alert-success {
-            background-color: #d4edda;
-            border-color: #c3e6cb;
-            color: #155724;
-        }
-        .alert-danger {
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-            color: #721c24;
-        }
-        
-        .sessions-preview {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            padding: 10px;
-        }
-        .session-item {
-            border-left: 4px solid #007bff;
-            padding: 10px 15px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border-radius: 0 5px 5px 0;
-        }
-        .session-item strong {
-            display: block;
-            margin-bottom: 5px;
-        }
-        .session-meta {
-            font-size: 12px;
-            color: #6c757d;
-        }
-        
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        .table th,
-        .table td {
-            padding: 8px 12px;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-        }
-        .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-        .table-responsive {
-            overflow-x: auto;
-        }
-        
-        .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid transparent;
-            border-top: 2px solid currentColor;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .text-center { text-align: center; }
-        .text-muted { color: #6c757d; }
-        .mt-3 { margin-top: 15px; }
-        .mb-0 { margin-bottom: 0; }
-        
-        code {
-            background: #f8f9fa;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 90%;
-        }
+      }
+      
+      .text-center {
+        text-align: center;
+      }
+      .text-muted {
+        color: #6c757d;
+      }
+      .mt-3 {
+        margin-top: 15px;
+      }
+      .mb-0 {
+        margin-bottom: 0;
+      }
+      
+      code {
+        background: #f8f9fa;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: monospace;
+        font-size: 90%;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="container">
-        <div class="card export-stats">
-            <div class="card-header">
-                <h2>📥 {{ title }}</h2>
-            </div>
-            <div class="card-body">
-                <div class="stats-row">
-                    <div class="stat-item">
-                        <div>📅</div>
-                        <div>
-                            <div class="stat-number">{{ total_sessions }}</div>
-                            <div class="stat-label">Sessions with Enrollments</div>
-                        </div>
-                    </div>
-                    <div>
-                        <button id="startExportBtn" class="btn btn-light">
-                            ▶️ Start Session-wise Export
-                        </button>
-                    </div>
-                </div>
-            </div>
+      <div class="card export-stats">
+        <div class="card-header">
+          <h2>📥 {{ title }}</h2>
         </div>
-
-        <!-- Progress Section -->
-        <div id="progressContainer" class="progress-container">
-            <div class="card">
-                <div class="card-header">Export Progress</div>
-                <div class="card-body">
-                    <div style="margin-bottom: 15px;">
-                        <span id="taskStatus" class="task-status task-started">Starting...</span>
-                        <span id="taskMessage" style="margin-left: 10px;">Initializing export task...</span>
-                    </div>
-                    <div class="progress">
-                        <div id="progressBar" class="progress-bar progress-bar-animated" style="width: 0%"></div>
-                    </div>
-                    <small id="progressText" class="text-muted">0% complete</small>
-
-                    <!-- Download Section -->
-                    <div id="downloadSection" class="mt-3" style="display: none;">
-                        <div class="alert alert-success">
-                            ✅ Export completed successfully!
-                            <a id="downloadLink" href="#" class="btn btn-success" style="margin-left: 15px;">
-                                ⬇️ Download ZIP File
-                            </a>
-                        </div>
-                    </div>
-
-                    <!-- Error Section -->
-                    <div id="errorSection" class="mt-3" style="display: none;">
-                        <div class="alert alert-danger">
-                            ⚠️ <span id="errorMessage">Export failed</span>
-                        </div>
-                    </div>
-                </div>
+        <div class="card-body">
+          <div class="stats-row">
+            <div class="stat-item">
+              <div>📅</div>
+              <div>
+                <div class="stat-number">{{ total_sessions }}</div>
+                <div class="stat-label">Sessions with Enrollments</div>
+              </div>
             </div>
+            <div>
+              <button id="startExportBtn" class="btn btn-light">▶️ Start Session-wise Export</button>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <!-- Sessions Preview -->
-        {% if sessions %}
+      <!-- Progress Section -->
+      <div id="progressContainer" class="progress-container">
         <div class="card">
-            <div class="card-header">
-                📋 Sessions to Export (Showing first 20)
+          <div class="card-header">Export Progress</div>
+          <div class="card-body">
+            <div style="margin-bottom: 15px;">
+              <span id="taskStatus" class="task-status task-started">Starting...</span>
+              <span id="taskMessage" style="margin-left: 10px;">Initializing export task...</span>
             </div>
-            <div class="card-body">
-                <div class="sessions-preview">
-                    {% for session in sessions %}
-                    <div class="session-item">
-                        <strong>{{ session.exam.program.name }}</strong>
-                        {% if session.exam.subject %}
-                            - {{ session.exam.subject.name }}
+            <div class="progress">
+              <div id="progressBar" class="progress-bar progress-bar-animated" style="width: 0%"></div>
+            </div>
+            <small id="progressText" class="text-muted">0% complete</small>
+
+            <!-- Download Section -->
+            <div id="downloadSection" class="mt-3" style="display: none;">
+              <div class="alert alert-success">
+                ✅ Export completed successfully!
+                <a id="downloadLink" href="#" class="btn btn-success" style="margin-left: 15px;">⬇️ Download ZIP File</a>
+              </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="errorSection" class="mt-3" style="display: none;">
+              <div class="alert alert-danger">
+                ⚠️ <span id="errorMessage">Export failed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sessions Preview -->
+      {% if sessions %}
+        <div class="card">
+          <div class="card-header">📋 Sessions to Export (Showing first 20)</div>
+          <div class="card-body">
+            <div class="sessions-preview">
+              {% for session in sessions %}
+                <div class="session-item">
+                  <strong>{{ session.exam.program.name }}</strong>
+                  {% if session.exam.subject %}
+                    - {{ session.exam.subject.name }}
+                  {% endif %}
+                  <div class="session-meta">🕒 {{ session.base_start|date:'Y-m-d H:i' }}
+                    | 👥 {{ session.enrollments.count }} enrollments</div>
+                </div>
+              {% endfor %}
+
+              {% if total_sessions > 20 %}
+                <div class="text-center mt-3">
+                  <small class="text-muted">... and {{ total_sessions|add:'-20' }} more sessions</small>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Recent Tasks -->
+      {% if recent_tasks %}
+        <div class="card">
+          <div class="card-header">🕒 Recent Export Tasks</div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Task ID</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Created</th>
+                    <th>Message</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for task in recent_tasks %}
+                    <tr>
+                      <td>
+                        <code>{{ task.task_id|truncatechars:12 }}</code>
+                      </td>
+                      <td>
+                        <span class="task-status task-{{ task.status|lower }}">{{ task.status }}</span>
+                      </td>
+                      <td>{{ task.progress|default:0 }}%</td>
+                      <td>{{ task.created|date:'M d, H:i' }}</td>
+                      <td>{{ task.message|truncatechars:50|default:'-' }}</td>
+                      <td>
+                        {% if task.status == 'SUCCESS' %}
+                          <button class="btn btn-primary check-task-btn" data-task-id="{{ task.task_id }}" style="padding: 5px 10px; font-size: 12px;">🔍</button>
                         {% endif %}
-                        <div class="session-meta">
-                            🕒 {{ session.base_start|date:"Y-m-d H:i" }}
-                            | 👥 {{ session.enrollments.count }} enrollments
-                        </div>
-                    </div>
-                    {% endfor %}
-                    
-                    {% if total_sessions > 20 %}
-                    <div class="text-center mt-3">
-                        <small class="text-muted">
-                            ... and {{ total_sessions|add:"-20" }} more sessions
-                        </small>
-                    </div>
-                    {% endif %}
-                </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
             </div>
+          </div>
         </div>
-        {% endif %}
-
-        <!-- Recent Tasks -->
-        {% if recent_tasks %}
-        <div class="card">
-            <div class="card-header">
-                🕒 Recent Export Tasks
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Task ID</th>
-                                <th>Status</th>
-                                <th>Progress</th>
-                                <th>Created</th>
-                                <th>Message</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for task in recent_tasks %}
-                            <tr>
-                                <td><code>{{ task.task_id|truncatechars:12 }}</code></td>
-                                <td>
-                                    <span class="task-status task-{{ task.status|lower }}">
-                                        {{ task.status }}
-                                    </span>
-                                </td>
-                                <td>{{ task.progress|default:0 }}%</td>
-                                <td>{{ task.created|date:"M d, H:i" }}</td>
-                                <td>{{ task.message|truncatechars:50|default:"-" }}</td>
-                                <td>
-                                    {% if task.status == "SUCCESS" %}
-                                    <button class="btn btn-primary check-task-btn" 
-                                            data-task-id="{{ task.task_id }}" 
-                                            style="padding: 5px 10px; font-size: 12px;">
-                                        🔍
-                                    </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endif %}
+      {% endif %}
     </div>
 
     <script>
-        let currentTaskId = null;
-        let progressInterval = null;
-
-        document.getElementById('startExportBtn').addEventListener('click', function() {
-            startExport();
-        });
-
-        // Add event listeners for check task buttons
-        document.querySelectorAll('.check-task-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const taskId = this.dataset.taskId;
-                checkTaskStatus(taskId);
-            });
-        });
-
-        function startExport() {
-            const btn = document.getElementById('startExportBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Starting...';
-
-            fetch('{% url "admin:session_export_start" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    currentTaskId = data.task_id;
-                    showProgress();
-                    startProgressTracking();
-                } else {
-                    showError(data.message);
-                    resetButton();
-                }
-            })
-            .catch(error => {
-                showError('Failed to start export: ' + error.message);
-                resetButton();
-            });
-        }
-
-        function showProgress() {
-            document.getElementById('progressContainer').style.display = 'block';
-            document.getElementById('errorSection').style.display = 'none';
-            document.getElementById('downloadSection').style.display = 'none';
-        }
-
-        function startProgressTracking() {
-            if (progressInterval) clearInterval(progressInterval);
-            
-            progressInterval = setInterval(() => {
-                if (currentTaskId) {
-                    checkTaskStatus(currentTaskId);
-                }
-            }, 2000); // Check every 2 seconds
-        }
-
-        function checkTaskStatus(taskId) {
-            // Fixed URL - remove the /admin/exports prefix since URLs are at admin root
-            fetch(`/admin/session-export/status/${taskId}/`)
-            .then(response => response.json())
-            .then(data => {
-                updateProgress(data);
-                
-                if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
-                    stopProgressTracking();
-                    resetButton();
-                }
-            })
-            .catch(error => {
-                console.error('Error checking task status:', error);
-            });
-        }
-
-        function updateProgress(data) {
-            const statusElement = document.getElementById('taskStatus');
-            const messageElement = document.getElementById('taskMessage');
-            const progressBar = document.getElementById('progressBar');
-            const progressText = document.getElementById('progressText');
-
-            // Update status
-            statusElement.className = `task-status task-${data.status.toLowerCase()}`;
-            statusElement.textContent = data.status;
-
-            // Update message
-            messageElement.textContent = data.message || 'Processing...';
-
-            // Update progress bar
-            const progress = data.progress || 0;
-            progressBar.style.width = `${progress}%`;
-            progressText.textContent = `${progress}% complete`;
-
-            // Handle completion
-            if (data.status === 'SUCCESS') {
-                progressBar.classList.remove('progress-bar-animated');
-                progressBar.classList.add('bg-success');
-                
-                if (data.download_url) {
-                    document.getElementById('downloadLink').href = data.download_url;
-                    document.getElementById('downloadSection').style.display = 'block';
-                }
-            } else if (data.status === 'FAILURE') {
-                progressBar.classList.remove('progress-bar-animated');
-                progressBar.classList.add('bg-danger');
-                document.getElementById('errorMessage').textContent = data.message;
-                document.getElementById('errorSection').style.display = 'block';
+      let currentTaskId = null
+      let progressInterval = null
+      
+      document.getElementById('startExportBtn').addEventListener('click', function () {
+        startExport()
+      })
+      
+      // Add event listeners for check task buttons
+      document.querySelectorAll('.check-task-btn').forEach((btn) => {
+        btn.addEventListener('click', function () {
+          const taskId = this.dataset.taskId
+          checkTaskStatus(taskId)
+        })
+      })
+      
+      function startExport() {
+        const btn = document.getElementById('startExportBtn')
+        btn.disabled = true
+        btn.innerHTML = '<span class="spinner"></span> Starting...'
+      
+        fetch('{% url "admin:session_export_start" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          }
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status === 'success') {
+              currentTaskId = data.task_id
+              showProgress()
+              startProgressTracking()
+            } else {
+              showError(data.message)
+              resetButton()
             }
-        }
-
-        function showError(message) {
-            document.getElementById('errorMessage').textContent = message;
-            document.getElementById('errorSection').style.display = 'block';
-            document.getElementById('progressContainer').style.display = 'block';
-        }
-
-        function stopProgressTracking() {
-            if (progressInterval) {
-                clearInterval(progressInterval);
-                progressInterval = null;
+          })
+          .catch((error) => {
+            showError('Failed to start export: ' + error.message)
+            resetButton()
+          })
+      }
+      
+      function showProgress() {
+        document.getElementById('progressContainer').style.display = 'block'
+        document.getElementById('errorSection').style.display = 'none'
+        document.getElementById('downloadSection').style.display = 'none'
+      }
+      
+      function startProgressTracking() {
+        if (progressInterval) clearInterval(progressInterval)
+      
+        progressInterval = setInterval(() => {
+          if (currentTaskId) {
+            checkTaskStatus(currentTaskId)
+          }
+        }, 2000) // Check every 2 seconds
+      }
+      
+      function checkTaskStatus(taskId) {
+        // Fixed URL - remove the /admin/exports prefix since URLs are at admin root
+        fetch(`/admin/session-export/status/${taskId}/`)
+          .then((response) => response.json())
+          .then((data) => {
+            updateProgress(data)
+      
+            if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
+              stopProgressTracking()
+              resetButton()
             }
+          })
+          .catch((error) => {
+            console.error('Error checking task status:', error)
+          })
+      }
+      
+      function updateProgress(data) {
+        const statusElement = document.getElementById('taskStatus')
+        const messageElement = document.getElementById('taskMessage')
+        const progressBar = document.getElementById('progressBar')
+        const progressText = document.getElementById('progressText')
+      
+        // Update status
+        statusElement.className = `task-status task-${data.status.toLowerCase()}`
+        statusElement.textContent = data.status
+      
+        // Update message
+        messageElement.textContent = data.message || 'Processing...'
+      
+        // Update progress bar
+        const progress = data.progress || 0
+        progressBar.style.width = `${progress}%`
+        progressText.textContent = `${progress}% complete`
+      
+        // Handle completion
+        if (data.status === 'SUCCESS') {
+          progressBar.classList.remove('progress-bar-animated')
+          progressBar.classList.add('bg-success')
+      
+          if (data.download_url) {
+            document.getElementById('downloadLink').href = data.download_url
+            document.getElementById('downloadSection').style.display = 'block'
+          }
+        } else if (data.status === 'FAILURE') {
+          progressBar.classList.remove('progress-bar-animated')
+          progressBar.classList.add('bg-danger')
+          document.getElementById('errorMessage').textContent = data.message
+          document.getElementById('errorSection').style.display = 'block'
         }
-
-        function resetButton() {
-            const btn = document.getElementById('startExportBtn');
-            btn.disabled = false;
-            btn.innerHTML = '▶️ Start Session-wise Export';
+      }
+      
+      function showError(message) {
+        document.getElementById('errorMessage').textContent = message
+        document.getElementById('errorSection').style.display = 'block'
+        document.getElementById('progressContainer').style.display = 'block'
+      }
+      
+      function stopProgressTracking() {
+        if (progressInterval) {
+          clearInterval(progressInterval)
+          progressInterval = null
         }
-
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
+      }
+      
+      function resetButton() {
+        const btn = document.getElementById('startExportBtn')
+        btn.disabled = false
+        btn.innerHTML = '▶️ Start Session-wise Export'
+      }
+      
+      function getCookie(name) {
+        let cookieValue = null
+        if (document.cookie && document.cookie !== '') {
+          const cookies = document.cookie.split(';')
+          for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim()
+            if (cookie.substring(0, name.length + 1) === name + '=') {
+              cookieValue = decodeURIComponent(cookie.substring(name.length + 1))
+              break
             }
-            return cookieValue;
+          }
         }
-
-        // Clean up intervals when page is unloaded
-        window.addEventListener('beforeunload', function() {
-            stopProgressTracking();
-        });
+        return cookieValue
+      }
+      
+      // Clean up intervals when page is unloaded
+      window.addEventListener('beforeunload', function () {
+        stopProgressTracking()
+      })
     </script>
-</body>
+  </body>
 </html>

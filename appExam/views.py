@@ -62,7 +62,8 @@ def generate_cache_key(prefix: str, *args) -> str:
 
 
 def get_fresh_student_answers(
-    enrollment_id: int, question_ids: list[int],
+    enrollment_id: int,
+    question_ids: list[int],
 ) -> dict[int, int]:
     """Always get fresh student answers with minimal caching"""
     if not question_ids:
@@ -71,7 +72,9 @@ def get_fresh_student_answers(
     # Very short cache (15 seconds) to handle rapid consecutive requests
     # but ensure data freshness for page reloads
     cache_key = generate_versioned_cache_key(
-        "fresh_answers", enrollment_id, hash(tuple(sorted(question_ids))),
+        "fresh_answers",
+        enrollment_id,
+        hash(tuple(sorted(question_ids))),
     )
 
     result = cache.get(cache_key)
@@ -701,7 +704,7 @@ def submit_answer_view(request):  # noqa: PLR0911
 
     try:
         with transaction.atomic():
-            if selected_letter is None:
+            if selected_letter == "":
                 StudentAnswer.objects.filter(
                     enrollment=enrollment,
                     question_id=question_id,
@@ -783,13 +786,11 @@ def submit_active_exam(request):
     """Exam submission with comprehensive cleanup"""
     try:
         candidate = Candidate.objects.get(user=request.user)
-
         enrollment = (
             StudentExamEnrollment.objects.filter(candidate=candidate, status="active")
             .select_related("session")
             .first()
         )
-
         if not enrollment:
             return Response(
                 {"error": "No active exam found", "status": 404},
@@ -810,13 +811,16 @@ def submit_active_exam(request):
 
         with transaction.atomic():
             now = timezone.now()
-            enrollment.status = "submitted"
+
+            # Use the model's submit_exam method instead of manual assignment
+            enrollment.submit_exam()
+
+            # Set additional fields that aren't handled by submit_exam()
             enrollment.disconnected_at = now
             enrollment.updated_at = now
-            enrollment.save(update_fields=["status", "disconnected_at", "updated_at"])
+            enrollment.save(update_fields=["disconnected_at", "updated_at"])
 
             cache.delete_many(cache_keys)
-            # Also increment cache version to invalidate versioned caches
             increment_enrollment_cache_version(enrollment.id)
 
         return Response({"message": "Exam submitted successfully", "status": 200})

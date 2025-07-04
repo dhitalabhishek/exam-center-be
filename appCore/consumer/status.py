@@ -66,9 +66,11 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _fetch_enrollment(self):
         try:
-            return get_closest_enrollment(self.scope["user"].candidate_profile)
+            enrollment = get_closest_enrollment(self.scope["user"].candidate_profile)
+            if enrollment and enrollment.status == "submitted":
+                return
         except StudentExamEnrollment.DoesNotExist:
-            return None
+            return
 
     @sync_to_async
     @transaction.atomic
@@ -109,7 +111,6 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
         elif enroll.present:
             enroll.handle_disconnect()
         return True
-
 
     async def send_status(self, data=None):
         data = await self._gather_status()
