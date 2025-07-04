@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from django.http import FileResponse
+from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -64,12 +65,7 @@ def download_exam_pdf_view(request, session_id):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Add session info header
-    session_info = (
-        f"{session.exam.program.name} - {session.base_start.strftime('%Y-%m-%d %H:%M')}"
-    )
-    elements.append(Paragraph(session_info, styles["Title"]))
-    elements.append(Spacer(1, 12))
+    # No header needed for PDF
 
     for enrollment, seat in enrollment_data:
         candidate = enrollment.candidate
@@ -123,7 +119,7 @@ def download_exam_pdf_view(request, session_id):
     return FileResponse(
         buffer,
         as_attachment=True,
-        filename=f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.pdf",
+        filename=f"Exam_Session_{session.exam.program.name}_{session.base_start.strftime('%Y-%m-%d')}_Enrollments.pdf",
     )
 
 
@@ -133,7 +129,7 @@ def download_exam_excel_view(request, session_id):
     - Symbol number
     - Full name
     - Seat number
-    Includes exam session date/time header.
+    Includes exam session date/time header with local timezone.
     """
     session = ExamSession.objects.get(pk=session_id)
     enrollments = StudentExamEnrollment.objects.filter(session=session).select_related(
@@ -142,6 +138,9 @@ def download_exam_excel_view(request, session_id):
 
     # Prepare data for table
     data = [["Symbol No", "Name", "Seat Number"]]
+
+    # Sort enrollments by symbol number
+    enrollments = enrollments.order_by("candidate__symbol_number")
 
     for enrollment in enrollments:
         candidate = enrollment.candidate
@@ -170,9 +169,12 @@ def download_exam_excel_view(request, session_id):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Add session info header
+    # Convert to local timezone for display
+    local_datetime = timezone.localtime(session.base_start)
+
+    # Add session info header with local timezone
     session_info = (
-        f"{session.exam.program.name} - {session.base_start.strftime('%Y-%m-%d %H:%M')}"
+        f"{session.exam.program.name} - {local_datetime.strftime('%Y-%m-%d %H:%M')}"
     )
     elements.append(Paragraph(session_info, styles["Title"]))
     elements.append(Spacer(1, 12))
@@ -194,7 +196,6 @@ def download_exam_excel_view(request, session_id):
     doc.build(elements)
     buffer.seek(0)
 
-    filename = (
-        f"Exam_Session_{session.exam.program.name}_{session.base_start}_Enrollments.pdf"
-    )
+    # Filename with local timezone
+    filename = f"Exam_Session_{session.exam.program.name}_{local_datetime.strftime('%Y-%m-%d_%H-%M')}_Enrollments.pdf"
     return FileResponse(buffer, as_attachment=True, filename=filename)

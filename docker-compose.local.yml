@@ -85,13 +85,13 @@ services:
     ports: []
     command: /start-celerybeat
 
-  flower:
-    <<: *django
-    image: backend_local_flower
-    container_name: backend_local_flower
-    ports:
-      - '5555:5555'
-    command: /start-flower
+  # flower:
+  #   <<: *django
+  #   image: backend_local_flower
+  #   container_name: backend_local_flower
+  #   ports:
+  #     - '5555:5555'
+  #   command: /start-flower
 
   minio:
     image: minio/minio:latest

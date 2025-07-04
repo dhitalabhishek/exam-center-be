@@ -32,6 +32,9 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
         if not self.enrollment:
             await self.send_error("No active enrollment")
             return await self.close()
+        if self.enrollment.status == "submitted":
+            return self.send_error("Session Already Submitted")
+
 
         await self._sync_and_start_timer()
         await self.send_status()  # noqa: RET503
@@ -66,11 +69,9 @@ class ExamStatusConsumer(AsyncJsonWebsocketConsumer):
     @sync_to_async
     def _fetch_enrollment(self):
         try:
-            enrollment = get_closest_enrollment(self.scope["user"].candidate_profile)
-            if enrollment and enrollment.status == "submitted":
-                return
+            return get_closest_enrollment(self.scope["user"].candidate_profile)
         except StudentExamEnrollment.DoesNotExist:
-            return
+            return None
 
     @sync_to_async
     @transaction.atomic
