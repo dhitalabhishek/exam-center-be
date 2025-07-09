@@ -364,10 +364,9 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost",
-    "http://69.62.85.89",
+    "http://69.62.76.223",
     "https://localhost:8003",
     "http://10.10.0.2",
-    "http://ioe.clamphook.com",
     "http://192.168.100.231",
 ]
 
